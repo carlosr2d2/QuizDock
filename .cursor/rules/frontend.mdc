@@ -1,0 +1,25 @@
+---
+description: Next.js App Router, RSC, and data-fetching conventions for apps/web
+globs: apps/web/**
+alwaysApply: false
+---
+
+# Frontend (`apps/web`)
+
+- App Router. Server Components by default. `'use client'` only for quizzes, flashcards, uploads, theme toggle, and other interactive widgets.
+- Routes: `(auth)` login/register; `(dashboard)` documents, exams, flashcards, team.
+- Tenant-aware: personal dashboard and org workspaces share layouts; scope API calls with the active organization.
+- Poll async jobs (document processing) with TanStack Query; do not busy-wait on the server.
+- Types in `apps/web/types` stay aligned with Pydantic schemas. API client in `lib/api`.
+- Proxy browser calls through Next rewrites to FastAPI; do not hardcode localhost in components.
+
+```tsx
+// ❌ BAD
+'use client'
+export default async function Page() { /* RSC + client mixed */ }
+
+// ✅ GOOD — server page, client island
+export default function DocumentsPage() {
+  return <DocumentUploader /> // DocumentUploader.tsx has 'use client'
+}
+```

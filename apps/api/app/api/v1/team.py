@@ -1,0 +1,129 @@
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import RequestContext, get_context, get_current_user, get_db, require_roles
+from app.models import MembershipRole, User
+from app.schemas.auth import OrganizationRead
+from app.schemas.content import MemberProgressRead
+from app.schemas.team import (
+    InvitationAcceptRead,
+    InvitationCreate,
+    InvitationPublic,
+    InvitationRead,
+    MyInvitationRead,
+    OrganizationCreate,
+    TeamSnapshot,
+)
+from app.services.generation import ExamService
+from app.services.team import TeamService
+
+MANAGE_ROLES = (MembershipRole.OWNER, MembershipRole.ADMIN)
+
+router = APIRouter(tags=["team"])
+
+
+@router.post("/organizations", response_model=OrganizationRead, status_code=201)
+async def create_organization(
+    payload: OrganizationCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrganizationRead:
+    org = await TeamService(db).create_organization(user, payload.name)
+    return OrganizationRead.model_validate(org)
+
+
+@router.get("/organizations/current/team", response_model=TeamSnapshot)
+async def current_team(
+    ctx: RequestContext = Depends(get_context),
+    db: AsyncSession = Depends(get_db),
+) -> TeamSnapshot:
+    return await TeamService(db).snapshot(ctx.organization_id, ctx.role)
+
+
+@router.post(
+    "/organizations/current/invitations",
+    response_model=InvitationRead,
+    status_code=201,
+)
+async def invite_member(
+    payload: InvitationCreate,
+    ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> InvitationRead:
+    invitation = await TeamService(db).invite(
+        ctx.organization_id,
+        ctx.user,
+        ctx.role,
+        payload.email,
+        payload.role,
+    )
+    return TeamService(db).invitation_read(invitation, include_token=True)
+
+
+@router.delete(
+    "/organizations/current/invitations/{invitation_id}",
+    status_code=204,
+    response_class=Response,
+)
+async def revoke_invitation(
+    invitation_id: UUID,
+    ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    await TeamService(db).revoke(ctx.organization_id, ctx.role, invitation_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/organizations/current/members/{user_id}",
+    status_code=204,
+    response_class=Response,
+)
+async def remove_member(
+    user_id: UUID,
+    ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    await TeamService(db).remove_member(ctx.organization_id, ctx.user.id, ctx.role, user_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/organizations/current/members/{user_id}/progress",
+    response_model=MemberProgressRead,
+)
+async def member_progress(
+    user_id: UUID,
+    ctx: RequestContext = Depends(get_context),
+    db: AsyncSession = Depends(get_db),
+) -> MemberProgressRead:
+    return await ExamService(db).member_progress(
+        ctx.organization_id, ctx.user.id, ctx.role, user_id
+    )
+
+
+@router.get("/invitations", response_model=list[MyInvitationRead])
+async def my_invitations(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[MyInvitationRead]:
+    return await TeamService(db).list_for_email(user.email)
+
+
+@router.get("/invitations/{token}", response_model=InvitationPublic)
+async def invitation_preview(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+) -> InvitationPublic:
+    return await TeamService(db).preview(token)
+
+
+@router.post("/invitations/{token}/accept", response_model=InvitationAcceptRead)
+async def accept_invitation(
+    token: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> InvitationAcceptRead:
+    return await TeamService(db).accept(token, user)

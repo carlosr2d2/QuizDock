@@ -1,0 +1,22 @@
+---
+description: Run unit tests after every code change
+alwaysApply: true
+---
+
+# Testing
+
+After any code change, run the API unit tests before considering the task done. Do not wait for the user to ask.
+
+```bash
+docker compose exec api pip install -q -r requirements-dev.txt
+docker compose exec api pytest
+```
+
+If Docker is not running, from `apps/api` with the venv active:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+Fix failing tests before moving on.

@@ -1,0 +1,26 @@
+---
+description: QuizDock product context, market dual B2B/B2C, and tech stack
+alwaysApply: true
+---
+
+# QuizDock
+
+SaaS híbrida B2B/B2C de procesamiento inteligente de documentos: genera cuestionarios, exámenes y flashcards con IA. Código y comentarios en inglés; producto bilingüe (i18n).
+
+## Mercados
+
+- **B2C:** estudio individual, certificaciones. Freemium / suscripción $9–$19. Exámenes, flashcards, spaced repetition, analíticas personales.
+- **B2B:** capacitación, cumplimiento normativo, onboarding. $199–$499+/mes. Multitenancy, RBAC, asignación de exámenes, auditoría, analíticas de equipo.
+
+Todo usuario tiene un workspace personal; las organizaciones son el mismo modelo de tenancy (no forks B2C/B2B).
+
+## Stack
+
+- Frontend: Next.js App Router, TypeScript, Tailwind, shadcn/ui
+- API: FastAPI, Python 3.11+, Pydantic v2
+- DB: PostgreSQL, SQLAlchemy 2 async, Alembic
+- Redis + Celery para PDFs, embeddings, generación IA (vídeo más adelante)
+
+## Monorepo
+
+`apps/web` (Next.js) y `apps/api` (FastAPI). No mezclar capas ni poner lógica de negocio en routers o componentes UI.

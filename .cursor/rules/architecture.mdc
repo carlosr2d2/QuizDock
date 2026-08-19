@@ -1,0 +1,28 @@
+---
+description: Clean Architecture layers and tenancy rules for QuizDock
+alwaysApply: true
+---
+
+# Architecture
+
+Clean Architecture with rigid layer boundaries.
+
+| Layer | Location | Responsibility |
+|---|---|---|
+| Frontend | `apps/web` | RSC by default; `'use client'` only for interactive UI |
+| Presentation | `apps/api/app/api/` | Routers `/api/v1/`, Pydantic validation, JWT, CORS |
+| Domain/Service | `apps/api/app/services/` | Credits, scoring, RAG, ingestion — no FastAPI imports |
+| Repository | `apps/api/app/repositories/` | Async SQLAlchemy persistence only |
+| Tasks | `apps/api/app/tasks/` | Celery: PDF parse, embeddings, batch AI generation |
+
+## Tenancy
+
+- Every request that reads/writes tenant data must resolve `organization_id` (header `X-Organization-Id` or personal org).
+- Never leak rows across organizations. Filter in the repository, not only in the router.
+- RBAC roles: `owner`, `admin`, `member`, `auditor`.
+
+## API conventions
+
+- Versioned routes only: `/api/v1/...`
+- JWT access tokens; payload includes `sub` (user id) and optional `org_id`.
+- Long work (PDF, AI) is always Celery; API returns `202` + job status, never blocks on LLM calls.

@@ -1,0 +1,17 @@
+---
+description: QuizDock visual system — sage paper, teal ink sidebar, single accent
+globs: apps/web/**/*.{tsx,css}
+alwaysApply: false
+---
+
+# UI / UX
+
+Sobrio y con profundidad. Light es papel claro (off-white con un toque sage); dark es tinta teal. Un solo acento (teal) para CTAs, foco y superficies activas. Contraste AA en ambos modos.
+
+- Paleta: sage / off-white + tinta teal. No introducir un segundo color de marca.
+- Tipo: Geist / Inter. Jerarquía de pesos estricta.
+- Componentes: shadcn/ui + Radix. Tailwind utilities only.
+- Tokens semánticos (`bg-background`, `bg-card`, `bg-accent`, `bg-sidebar`). No hardcodear hex en componentes.
+- Layout dashboard: sidebar teal (más clara en light, casi negra en dark), contenido sobre papel, cards blancas/elevadas con borde suave.
+- Copy: profesional y breve. Español e inglés vía i18n cuando se toque UI de producto; no mezclar idiomas en un mismo flujo.
+- Sin animaciones decorativas ni gradientes recargados.

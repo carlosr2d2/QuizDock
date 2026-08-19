@@ -1,0 +1,28 @@
+---
+description: FastAPI, SQLAlchemy 2, and Celery conventions for apps/api
+globs: apps/api/**
+alwaysApply: false
+---
+
+# Backend (`apps/api`)
+
+- Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy 2 **async** (`asyncpg`). No sync sessions in request paths.
+- Models in `app/models/`, schemas in `app/schemas/`, business logic in `app/services/`, persistence in `app/repositories/`.
+- Routers stay thin: validate → call service → return schema. No queries in routers.
+- UUID primary keys. Timestamps `created_at` / `updated_at` timezone-aware.
+- Alembic for every schema change; never edit production DB by hand.
+- Celery tasks are idempotent; document `status`: `uploaded | processing | ready | failed`.
+- Config via `pydantic-settings` and env vars. Never commit secrets.
+
+```python
+# ❌ BAD — query in router
+@router.get("/documents")
+async def list_docs(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Document))
+    return result.scalars().all()
+
+# ✅ GOOD — service + tenant scope
+@router.get("/documents", response_model=list[DocumentRead])
+async def list_docs(ctx: RequestContext = Depends(get_context)):
+    return await document_service.list_for_org(ctx.organization_id)
+```
