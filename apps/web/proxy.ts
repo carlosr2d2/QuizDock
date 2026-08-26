@@ -27,5 +27,6 @@ export const config = {
     "/flashcards",
     "/flashcards/:path*",
     "/team",
+    "/team/:path*",
   ],
 };

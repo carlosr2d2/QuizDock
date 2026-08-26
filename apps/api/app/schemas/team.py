@@ -24,6 +24,22 @@ class MemberRead(ORMModel):
     role: MembershipRole
 
 
+class GroupCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+
+
+class GroupMembersUpdate(BaseModel):
+    user_ids: list[UUID] = Field(default_factory=list)
+
+
+class GroupRead(BaseModel):
+    id: UUID
+    organization_id: UUID
+    name: str
+    member_count: int
+    members: list[MemberRead] = []
+
+
 class InvitationRead(ORMModel):
     id: UUID
     organization_id: UUID
@@ -33,6 +49,7 @@ class InvitationRead(ORMModel):
     token: str | None = None
     expires_at: datetime
     created_at: datetime
+    email_sent: bool | None = None
 
 
 class InvitationPublic(BaseModel):
@@ -61,3 +78,4 @@ class TeamSnapshot(BaseModel):
     can_create_content: bool
     members: list[MemberRead]
     invitations: list[InvitationRead]
+    groups: list[GroupRead] = []

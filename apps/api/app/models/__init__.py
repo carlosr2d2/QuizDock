@@ -5,12 +5,14 @@ from app.models.exam import (
     Exam,
     ExamAssignment,
     ExamAttempt,
+    ExamGroupAssignment,
     ExamKind,
     ExamStatus,
     Question,
     QuestionKind,
 )
 from app.models.flashcard import Flashcard
+from app.models.group import Group, GroupMember
 from app.models.identity import Invitation, Membership, MembershipRole, Organization, PlanTier, User
 from app.models.job import GenerationJob
 from app.models.support import ErrorReport
@@ -23,11 +25,14 @@ __all__ = [
     "Exam",
     "ExamAssignment",
     "ExamAttempt",
+    "ExamGroupAssignment",
     "ExamKind",
     "ExamStatus",
     "ErrorReport",
     "Flashcard",
     "GenerationJob",
+    "Group",
+    "GroupMember",
     "Invitation",
     "Membership",
     "MembershipRole",

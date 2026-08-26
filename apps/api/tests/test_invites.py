@@ -1,0 +1,186 @@
+from uuid import uuid4
+
+import pytest
+
+from app.models import MembershipRole
+from app.models.identity import InvitationStatus
+from app.services.errors import ConflictError, DomainError, ForbiddenError, NotFoundError
+from app.services.mail import MailError
+from app.services.team import TeamService
+from tests.fakes import (
+    FakeGroupRepo,
+    FakeInvitationRepo,
+    FakeMailer,
+    FakeMembershipRepo,
+    FakeOrgRepo,
+    FakeSession,
+    FakeUserRepo,
+    make_membership,
+    make_org,
+    make_user,
+)
+
+
+def _team(org, mailer: FakeMailer | None = None) -> tuple[TeamService, FakeMailer]:
+    resolved = mailer or FakeMailer()
+    service = TeamService(FakeSession(), mailer=resolved)
+    service.orgs = FakeOrgRepo()
+    service.orgs.by_id[org.id] = org
+    service.orgs.slugs.add(org.slug)
+    service.users = FakeUserRepo()
+    service.memberships = FakeMembershipRepo()
+    service.groups = FakeGroupRepo()
+    service.invitations = FakeInvitationRepo()
+    return service, resolved
+
+
+@pytest.mark.asyncio
+async def test_invite_sends_email_with_accept_link():
+    org = make_org(name="Acme Capacitación", is_personal=False, slug="acme")
+    owner = make_user(full_name="Ana Owner")
+    service, mailer = _team(org)
+
+    outcome = await service.invite(
+        org.id, owner, MembershipRole.OWNER, "carlos@empresa.com", MembershipRole.MEMBER
+    )
+
+    assert outcome.email_sent is True
+    assert outcome.invitation.email == "carlos@empresa.com"
+    assert len(mailer.sent) == 1
+    message = mailer.sent[0]
+    assert message.to == "carlos@empresa.com"
+    assert "Acme Capacitación" in message.subject
+    assert "Ana Owner" in message.text
+    assert "miembro" in message.text
+    assert f"/invite/{outcome.invitation.token}" in message.text
+    assert f"/invite/{outcome.invitation.token}" in message.html
+
+
+@pytest.mark.asyncio
+async def test_reinvite_rotates_token_and_sends_again():
+    org = make_org(is_personal=False)
+    owner = make_user()
+    service, mailer = _team(org)
+    first = await service.invite(org.id, owner, MembershipRole.OWNER, "ana@empresa.com", MembershipRole.ADMIN)
+    first_token = first.invitation.token
+    second = await service.invite(org.id, owner, MembershipRole.OWNER, "ana@empresa.com", MembershipRole.MEMBER)
+
+    assert first.invitation.id == second.invitation.id
+    assert first_token != second.invitation.token
+    assert second.invitation.role == MembershipRole.MEMBER
+    assert len(mailer.sent) == 2
+    assert second.invitation.token in mailer.sent[1].text
+
+
+@pytest.mark.asyncio
+async def test_invite_succeeds_when_mailer_fails():
+    org = make_org(is_personal=False)
+    owner = make_user()
+    mailer = FakeMailer()
+    mailer.error = MailError("smtp down")
+    service, _ = _team(org, mailer)
+
+    outcome = await service.invite(
+        org.id, owner, MembershipRole.OWNER, "ana@empresa.com", MembershipRole.MEMBER
+    )
+
+    assert outcome.email_sent is False
+    assert outcome.invitation.status == InvitationStatus.PENDING
+    assert mailer.sent == []
+
+
+@pytest.mark.asyncio
+async def test_invite_skips_email_when_smtp_is_not_configured():
+    org = make_org(is_personal=False)
+    owner = make_user()
+    service, mailer = _team(org, FakeMailer(configured=False))
+
+    outcome = await service.invite(
+        org.id, owner, MembershipRole.OWNER, "ana@empresa.com", MembershipRole.MEMBER
+    )
+
+    assert outcome.email_sent is False
+    assert mailer.sent == []
+
+
+@pytest.mark.asyncio
+async def test_invite_rejects_existing_member_without_sending():
+    org = make_org(is_personal=False)
+    owner = make_user()
+    member = make_user(email="carlos@empresa.com")
+    service, mailer = _team(org)
+    service.users.by_email[member.email] = member
+    service.memberships.items = [make_membership(member, org.id, MembershipRole.MEMBER)]
+
+    with pytest.raises(ConflictError, match="miembro"):
+        await service.invite(org.id, owner, MembershipRole.OWNER, member.email, MembershipRole.MEMBER)
+    assert mailer.sent == []
+
+
+@pytest.mark.asyncio
+async def test_cannot_invite_self():
+    org = make_org(is_personal=False)
+    owner = make_user(email="ana@empresa.com")
+    service, mailer = _team(org)
+    with pytest.raises(DomainError, match="ti mismo"):
+        await service.invite(org.id, owner, MembershipRole.OWNER, "Ana@empresa.com", MembershipRole.MEMBER)
+    assert mailer.sent == []
+
+
+@pytest.mark.asyncio
+async def test_member_cannot_invite():
+    org = make_org(is_personal=False)
+    member = make_user()
+    service, _ = _team(org)
+    with pytest.raises(ForbiddenError):
+        await service.invite(org.id, member, MembershipRole.MEMBER, "ana@empresa.com", MembershipRole.MEMBER)
+
+
+@pytest.mark.asyncio
+async def test_personal_workspace_cannot_invite():
+    org = make_org(is_personal=True)
+    owner = make_user()
+    service, _ = _team(org)
+    with pytest.raises(DomainError, match="personal"):
+        await service.invite(org.id, owner, MembershipRole.OWNER, "ana@empresa.com", MembershipRole.MEMBER)
+
+
+@pytest.mark.asyncio
+async def test_resend_sends_again():
+    org = make_org(is_personal=False)
+    owner = make_user(full_name="Ana")
+    service, mailer = _team(org)
+    created = await service.invite(
+        org.id, owner, MembershipRole.OWNER, "carlos@empresa.com", MembershipRole.AUDITOR
+    )
+
+    outcome = await service.resend(org.id, owner, MembershipRole.OWNER, created.invitation.id)
+
+    assert outcome.email_sent is True
+    assert len(mailer.sent) == 2
+    assert "auditor" in mailer.sent[1].text
+    assert created.invitation.token in mailer.sent[1].text
+
+
+@pytest.mark.asyncio
+async def test_resend_rejects_revoked():
+    org = make_org(is_personal=False)
+    owner = make_user()
+    service, mailer = _team(org)
+    created = await service.invite(
+        org.id, owner, MembershipRole.OWNER, "carlos@empresa.com", MembershipRole.MEMBER
+    )
+    await service.revoke(org.id, MembershipRole.OWNER, created.invitation.id)
+
+    with pytest.raises(DomainError, match="pendientes"):
+        await service.resend(org.id, owner, MembershipRole.OWNER, created.invitation.id)
+    assert len(mailer.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_resend_unknown_invitation():
+    org = make_org(is_personal=False)
+    owner = make_user()
+    service, _ = _team(org)
+    with pytest.raises(NotFoundError):
+        await service.resend(org.id, owner, MembershipRole.OWNER, uuid4())

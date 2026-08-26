@@ -8,6 +8,9 @@ from app.models import MembershipRole, User
 from app.schemas.auth import OrganizationRead
 from app.schemas.content import MemberProgressRead
 from app.schemas.team import (
+    GroupCreate,
+    GroupMembersUpdate,
+    GroupRead,
     InvitationAcceptRead,
     InvitationCreate,
     InvitationPublic,
@@ -52,14 +55,31 @@ async def invite_member(
     ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
     db: AsyncSession = Depends(get_db),
 ) -> InvitationRead:
-    invitation = await TeamService(db).invite(
+    service = TeamService(db)
+    outcome = await service.invite(
         ctx.organization_id,
         ctx.user,
         ctx.role,
         payload.email,
         payload.role,
     )
-    return TeamService(db).invitation_read(invitation, include_token=True)
+    return service.invitation_read(outcome.invitation, include_token=True, email_sent=outcome.email_sent)
+
+
+@router.post(
+    "/organizations/current/invitations/{invitation_id}/resend",
+    response_model=InvitationRead,
+)
+async def resend_invitation(
+    invitation_id: UUID,
+    ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> InvitationRead:
+    service = TeamService(db)
+    outcome = await service.resend(
+        ctx.organization_id, ctx.user, ctx.role, invitation_id
+    )
+    return service.invitation_read(outcome.invitation, include_token=True, email_sent=outcome.email_sent)
 
 
 @router.delete(
@@ -102,6 +122,80 @@ async def member_progress(
     return await ExamService(db).member_progress(
         ctx.organization_id, ctx.user.id, ctx.role, user_id
     )
+
+
+@router.post("/organizations/current/groups", response_model=GroupRead, status_code=201)
+async def create_group(
+    payload: GroupCreate,
+    ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> GroupRead:
+    return await TeamService(db).create_group(
+        ctx.organization_id, ctx.user.id, ctx.role, payload.name
+    )
+
+
+@router.patch("/organizations/current/groups/{group_id}", response_model=GroupRead)
+async def rename_group(
+    group_id: UUID,
+    payload: GroupCreate,
+    ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> GroupRead:
+    return await TeamService(db).rename_group(ctx.organization_id, ctx.role, group_id, payload.name)
+
+
+@router.delete(
+    "/organizations/current/groups/{group_id}",
+    status_code=204,
+    response_class=Response,
+)
+async def delete_group(
+    group_id: UUID,
+    ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    await TeamService(db).delete_group(ctx.organization_id, ctx.role, group_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put("/organizations/current/groups/{group_id}/members", response_model=GroupRead)
+async def set_group_members(
+    group_id: UUID,
+    payload: GroupMembersUpdate,
+    ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> GroupRead:
+    return await TeamService(db).set_group_members(
+        ctx.organization_id, ctx.role, group_id, payload.user_ids
+    )
+
+
+@router.post("/organizations/current/groups/{group_id}/members", response_model=GroupRead)
+async def add_group_members(
+    group_id: UUID,
+    payload: GroupMembersUpdate,
+    ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> GroupRead:
+    return await TeamService(db).add_group_members(
+        ctx.organization_id, ctx.role, group_id, payload.user_ids
+    )
+
+
+@router.delete(
+    "/organizations/current/groups/{group_id}/members/{user_id}",
+    status_code=204,
+    response_class=Response,
+)
+async def remove_group_member(
+    group_id: UUID,
+    user_id: UUID,
+    ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    await TeamService(db).remove_group_member(ctx.organization_id, ctx.role, group_id, user_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/invitations", response_model=list[MyInvitationRead])

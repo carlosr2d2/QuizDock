@@ -116,6 +116,7 @@ export type ExamDetail = Exam & {
   questions: QuestionPublic[];
   attempts: AttemptSummary[];
   assignments: ExamAssignment[];
+  assigned_group_ids?: string[];
 };
 
 export type QuestionResult = {
@@ -239,6 +240,14 @@ export type TeamMember = {
   role: MembershipRole;
 };
 
+export type TeamGroup = {
+  id: string;
+  organization_id: string;
+  name: string;
+  member_count: number;
+  members: TeamMember[];
+};
+
 export type Invitation = {
   id: string;
   organization_id: string;
@@ -248,6 +257,7 @@ export type Invitation = {
   token: string | null;
   expires_at: string;
   created_at: string;
+  email_sent?: boolean | null;
 };
 
 export type InvitationPublic = {
@@ -276,4 +286,5 @@ export type TeamSnapshot = {
   can_create_content: boolean;
   members: TeamMember[];
   invitations: Invitation[];
+  groups?: TeamGroup[];
 };

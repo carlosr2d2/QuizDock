@@ -457,7 +457,7 @@ function AssignPanel({
     queryFn: () => apiFetch<TeamSnapshot>("/api/v1/organizations/current/team"),
   });
   const assign = useMutation({
-    mutationFn: (body: { user_ids?: string[]; all_members?: boolean }) =>
+    mutationFn: (body: { user_ids?: string[]; group_ids?: string[]; all_members?: boolean }) =>
       apiFetch<ExamAssignment[]>(`/api/v1/exams/${examId}/assignments`, { method: "POST", body }),
     onSuccess: async () => {
       setSelected([]);
@@ -487,8 +487,8 @@ function AssignPanel({
     <Card className="mt-6">
       <CardTitle>Asignar a empleados</CardTitle>
       <CardDescription>
-        El miembro verá este examen como pendiente en su workspace de empresa. Si ya lo hizo, abre la fila
-        para ver sus respuestas.
+        Asigna a un grupo o a personas. Quien ya lo tenga no se duplica. Si ya lo hizo, abre la fila para
+        ver sus respuestas.
       </CardDescription>
       {exam.assignments?.length ? (
         <ul className="mt-4 space-y-1">
@@ -535,9 +535,46 @@ function AssignPanel({
       )}
       {team.isLoading ? (
         <Loader label="Cargando miembros…" className="mt-4" />
-      ) : available.length ? (
-        <div className="mt-4 space-y-3">
-          <ul className="space-y-2">
+      ) : (
+        <>
+          {(team.data?.groups ?? []).length ? (
+            <div className="mt-4 space-y-2">
+              <p className="text-sm font-medium">Grupos</p>
+              <ul className="space-y-2">
+                {(team.data?.groups ?? []).map((group) => {
+                  const already = (exam.assigned_group_ids ?? []).includes(group.id);
+                  const empty = group.member_count === 0;
+                  return (
+                    <li
+                      key={group.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{group.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {group.member_count} {group.member_count === 1 ? "integrante" : "integrantes"}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={already ? "outline" : "primary"}
+                        disabled={already || empty}
+                        loading={assign.isPending && assign.variables?.group_ids?.[0] === group.id}
+                        onClick={() => assign.mutate({ group_ids: [group.id] })}
+                      >
+                        {already ? "Asignado" : empty ? "Sin integrantes" : "Asignar grupo"}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+          {available.length ? (
+            <div className="mt-4 space-y-3">
+              <p className="text-sm font-medium">Personas</p>
+              <ul className="space-y-2">
             {available.map((member) => (
               <li key={member.user_id}>
                 <label className="flex cursor-pointer items-center gap-3 text-sm">
@@ -574,10 +611,12 @@ function AssignPanel({
               {assign.isPending ? "Asignando…" : "Asignar a todos"}
             </Button>
           </div>
-        </div>
-      ) : team.data && !available.length ? (
-        <p className="mt-3 text-sm text-muted-foreground">Todos los miembros ya están asignados.</p>
-      ) : null}
+            </div>
+          ) : team.data && !available.length ? (
+            <p className="mt-3 text-sm text-muted-foreground">Todos los miembros ya están asignados.</p>
+          ) : null}
+        </>
+      )}
       {assign.error ? <p className="mt-3 text-sm text-destructive">{assign.error.message}</p> : null}
     </Card>
   );

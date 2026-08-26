@@ -159,10 +159,12 @@ class ExamDetail(ExamRead):
     questions: list[QuestionPublic] = []
     attempts: list[AttemptSummary] = []
     assignments: list[AssignmentRead] = []
+    assigned_group_ids: list[UUID] = []
 
 
 class ExamAssignRequest(BaseModel):
     user_ids: list[UUID] = Field(default_factory=list)
+    group_ids: list[UUID] = Field(default_factory=list)
     all_members: bool = False
 
 

@@ -1,13 +1,17 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
+import logging
 import secrets
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.text import slugify
 from app.models import Invitation, Membership, MembershipRole, Organization, PlanTier, User
+from app.models.group import Group, GroupMember
 from app.models.identity import InvitationStatus
 from app.models.mixins import utcnow
+from app.repositories.groups import GroupRepository
 from app.repositories.identity import (
     InvitationRepository,
     MembershipRepository,
@@ -16,6 +20,7 @@ from app.repositories.identity import (
 )
 from app.schemas.auth import OrganizationRead
 from app.schemas.team import (
+    GroupRead,
     InvitationAcceptRead,
     InvitationPublic,
     InvitationRead,
@@ -24,19 +29,30 @@ from app.schemas.team import (
     TeamSnapshot,
 )
 from app.services.errors import ConflictError, DomainError, ForbiddenError, NotFoundError
+from app.services.mail import MailError, Mailer, build_invite_email, get_mailer, invite_accept_url
 
 MANAGE_ROLES = {MembershipRole.OWNER, MembershipRole.ADMIN}
 INVITABLE_ROLES = {MembershipRole.ADMIN, MembershipRole.MEMBER, MembershipRole.AUDITOR}
 INVITE_DAYS = 14
 
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class InviteOutcome:
+    invitation: Invitation
+    email_sent: bool
+
 
 class TeamService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, mailer: Mailer | None = None) -> None:
         self.session = session
         self.users = UserRepository(session)
         self.orgs = OrganizationRepository(session)
         self.memberships = MembershipRepository(session)
         self.invitations = InvitationRepository(session)
+        self.groups = GroupRepository(session)
+        self.mailer = mailer if mailer is not None else get_mailer()
 
     async def create_organization(self, user: User, name: str) -> Organization:
         slug = await self._unique_slug(slugify(name) or "equipo")
@@ -60,24 +76,32 @@ class TeamService:
     async def snapshot(self, organization_id: UUID, role: MembershipRole) -> TeamSnapshot:
         org = await self._org(organization_id)
         members = await self.memberships.list_with_users(organization_id)
+        member_reads = [
+            MemberRead(
+                id=item.id,
+                user_id=item.user_id,
+                email=item.user.email,
+                full_name=item.user.full_name,
+                role=item.role,
+            )
+            for item in members
+        ]
+        by_user = {item.user_id: item for item in member_reads}
         invitations = await self.invitations.list_for_org(organization_id)
+        groups = [
+            self._group_read(group, by_user) for group in await self.groups.list_for_org(organization_id)
+        ]
         can_manage = role in MANAGE_ROLES and not org.is_personal
         return TeamSnapshot(
             organization=OrganizationRead.model_validate(org),
             role=role,
             can_manage=can_manage,
             can_create_content=role in MANAGE_ROLES,
-            members=[
-                MemberRead(
-                    id=item.id,
-                    user_id=item.user_id,
-                    email=item.user.email,
-                    full_name=item.user.full_name,
-                    role=item.role,
-                )
-                for item in members
+            members=member_reads,
+            invitations=[
+                self._invitation_read(item, include_token=can_manage) for item in invitations
             ],
-            invitations=[self._invitation_read(item, include_token=can_manage) for item in invitations],
+            groups=groups,
         )
 
     async def invite(
@@ -87,7 +111,7 @@ class TeamService:
         actor_role: MembershipRole,
         email: str,
         role: MembershipRole,
-    ) -> Invitation:
+    ) -> InviteOutcome:
         org = await self._org(organization_id)
         self._require_manage(org, actor_role)
         if role not in INVITABLE_ROLES:
@@ -110,7 +134,7 @@ class TeamService:
             await self.session.commit()
             refreshed = await self.invitations.get(pending.id, organization_id)
             assert refreshed is not None
-            return refreshed
+            return InviteOutcome(invitation=refreshed, email_sent=self._deliver_invite(org, actor, refreshed))
 
         invitation = Invitation(
             organization_id=organization_id,
@@ -125,7 +149,23 @@ class TeamService:
         await self.session.commit()
         created = await self.invitations.get(invitation.id, organization_id)
         assert created is not None
-        return created
+        return InviteOutcome(invitation=created, email_sent=self._deliver_invite(org, actor, created))
+
+    async def resend(
+        self,
+        organization_id: UUID,
+        actor: User,
+        actor_role: MembershipRole,
+        invitation_id: UUID,
+    ) -> InviteOutcome:
+        org = await self._org(organization_id)
+        self._require_manage(org, actor_role)
+        invitation = await self.invitations.get(invitation_id, organization_id)
+        if invitation is None:
+            raise NotFoundError("Invitación no encontrada")
+        if not await self._ensure_pending(invitation):
+            raise DomainError("Solo se pueden reenviar invitaciones pendientes.")
+        return InviteOutcome(invitation=invitation, email_sent=self._deliver_invite(org, actor, invitation))
 
     async def revoke(
         self,
@@ -161,6 +201,7 @@ class TeamService:
             raise ForbiddenError("No puedes quitar al propietario.")
         if actor_role != MembershipRole.OWNER and membership.role in MANAGE_ROLES:
             raise ForbiddenError("Solo el propietario puede quitar a un admin.")
+        await self.groups.delete_user_from_org(organization_id, user_id)
         await self.memberships.delete(membership)
         await self.session.commit()
 
@@ -236,8 +277,134 @@ class TeamService:
                 continue
         return joined_id
 
-    def invitation_read(self, invitation: Invitation, include_token: bool = False) -> InvitationRead:
-        return self._invitation_read(invitation, include_token=include_token)
+    async def create_group(
+        self, organization_id: UUID, actor_id: UUID, actor_role: MembershipRole, name: str
+    ) -> GroupRead:
+        org = await self._org(organization_id)
+        self._require_manage(org, actor_role)
+        cleaned = name.strip()
+        if await self.groups.get_by_name(organization_id, cleaned):
+            raise ConflictError("Ya existe un grupo con ese nombre.")
+        group = Group(
+            organization_id=organization_id,
+            name=cleaned,
+            created_by_user_id=actor_id,
+        )
+        await self.groups.add(group)
+        await self.session.commit()
+        created = await self.groups.get(group.id, organization_id)
+        assert created is not None
+        return await self._group_read_fresh(created, organization_id)
+
+    async def rename_group(
+        self,
+        organization_id: UUID,
+        actor_role: MembershipRole,
+        group_id: UUID,
+        name: str,
+    ) -> GroupRead:
+        org = await self._org(organization_id)
+        self._require_manage(org, actor_role)
+        group = await self.groups.get(group_id, organization_id)
+        if group is None:
+            raise NotFoundError("Grupo no encontrado")
+        cleaned = name.strip()
+        existing = await self.groups.get_by_name(organization_id, cleaned)
+        if existing is not None and existing.id != group.id:
+            raise ConflictError("Ya existe un grupo con ese nombre.")
+        group.name = cleaned
+        await self.session.commit()
+        refreshed = await self.groups.get(group.id, organization_id)
+        assert refreshed is not None
+        return await self._group_read_fresh(refreshed, organization_id)
+
+    async def delete_group(
+        self, organization_id: UUID, actor_role: MembershipRole, group_id: UUID
+    ) -> None:
+        org = await self._org(organization_id)
+        self._require_manage(org, actor_role)
+        group = await self.groups.get(group_id, organization_id)
+        if group is None:
+            raise NotFoundError("Grupo no encontrado")
+        await self.groups.delete(group)
+        await self.session.commit()
+
+    async def set_group_members(
+        self,
+        organization_id: UUID,
+        actor_role: MembershipRole,
+        group_id: UUID,
+        user_ids: list[UUID],
+    ) -> GroupRead:
+        org = await self._org(organization_id)
+        self._require_manage(org, actor_role)
+        group = await self.groups.get(group_id, organization_id)
+        if group is None:
+            raise NotFoundError("Grupo no encontrado")
+        members = await self.memberships.list_with_users(organization_id)
+        member_ids = {item.user_id for item in members}
+        unique = set(user_ids)
+        unknown = unique - member_ids
+        if unknown:
+            raise DomainError("Hay usuarios que no pertenecen a este workspace.")
+        await self.groups.replace_members(group, organization_id, unique)
+        await self.session.commit()
+        refreshed = await self.groups.get(group.id, organization_id)
+        assert refreshed is not None
+        return await self._group_read_fresh(refreshed, organization_id)
+
+    async def add_group_members(
+        self,
+        organization_id: UUID,
+        actor_role: MembershipRole,
+        group_id: UUID,
+        user_ids: list[UUID],
+    ) -> GroupRead:
+        org = await self._org(organization_id)
+        self._require_manage(org, actor_role)
+        group = await self.groups.get(group_id, organization_id)
+        if group is None:
+            raise NotFoundError("Grupo no encontrado")
+        members = await self.memberships.list_with_users(organization_id)
+        member_ids = {item.user_id for item in members}
+        unique = set(user_ids)
+        if not unique:
+            raise DomainError("Selecciona al menos un miembro.")
+        unknown = unique - member_ids
+        if unknown:
+            raise DomainError("Hay usuarios que no pertenecen a este workspace.")
+        current = {item.user_id for item in group.members}
+        for user_id in unique - current:
+            await self.groups.add_member(
+                GroupMember(organization_id=organization_id, group_id=group.id, user_id=user_id)
+            )
+        await self.session.commit()
+        refreshed = await self.groups.get(group.id, organization_id)
+        assert refreshed is not None
+        return await self._group_read_fresh(refreshed, organization_id)
+
+    async def remove_group_member(
+        self,
+        organization_id: UUID,
+        actor_role: MembershipRole,
+        group_id: UUID,
+        user_id: UUID,
+    ) -> None:
+        org = await self._org(organization_id)
+        self._require_manage(org, actor_role)
+        member = await self.groups.get_member(group_id, user_id, organization_id)
+        if member is None:
+            raise NotFoundError("Ese integrante no está en el grupo.")
+        await self.groups.delete_member(member)
+        await self.session.commit()
+
+    def invitation_read(
+        self,
+        invitation: Invitation,
+        include_token: bool = False,
+        email_sent: bool | None = None,
+    ) -> InvitationRead:
+        return self._invitation_read(invitation, include_token=include_token, email_sent=email_sent)
 
     async def _org(self, organization_id: UUID) -> Organization:
         org = await self.orgs.get(organization_id)
@@ -247,7 +414,7 @@ class TeamService:
 
     def _require_manage(self, org: Organization, role: MembershipRole) -> None:
         if org.is_personal:
-            raise DomainError("El workspace personal no admite invitaciones. Crea un equipo.")
+            raise DomainError("El workspace personal no admite invitaciones ni grupos. Crea un equipo.")
         if role not in MANAGE_ROLES:
             raise ForbiddenError("Solo el propietario o un admin puede gestionar el equipo.")
 
@@ -269,7 +436,32 @@ class TeamService:
             return False
         return True
 
-    def _invitation_read(self, invitation: Invitation, include_token: bool) -> InvitationRead:
+    def _deliver_invite(self, org: Organization, actor: User, invitation: Invitation) -> bool:
+        url = invite_accept_url(invitation.token)
+        message = build_invite_email(
+            to=invitation.email,
+            organization_name=org.name,
+            inviter_name=actor.full_name,
+            role=invitation.role,
+            accept_url=url,
+            expires_at=invitation.expires_at,
+        )
+        if not self.mailer.configured:
+            logger.info("Invite for %s (SMTP not configured): %s", invitation.email, url)
+            return False
+        try:
+            self.mailer.send(message)
+            return True
+        except MailError:
+            logger.exception("Failed to send invite email to %s", invitation.email)
+            return False
+
+    def _invitation_read(
+        self,
+        invitation: Invitation,
+        include_token: bool,
+        email_sent: bool | None = None,
+    ) -> InvitationRead:
         return InvitationRead(
             id=invitation.id,
             organization_id=invitation.organization_id,
@@ -279,7 +471,34 @@ class TeamService:
             token=invitation.token if include_token else None,
             expires_at=invitation.expires_at,
             created_at=invitation.created_at,
+            email_sent=email_sent,
         )
+
+    def _group_read(self, group: Group, members_by_user: dict[UUID, MemberRead]) -> GroupRead:
+        members = [
+            members_by_user[item.user_id] for item in group.members if item.user_id in members_by_user
+        ]
+        return GroupRead(
+            id=group.id,
+            organization_id=group.organization_id,
+            name=group.name,
+            member_count=len(members),
+            members=members,
+        )
+
+    async def _group_read_fresh(self, group: Group, organization_id: UUID) -> GroupRead:
+        members = await self.memberships.list_with_users(organization_id)
+        by_user = {
+            item.user_id: MemberRead(
+                id=item.id,
+                user_id=item.user_id,
+                email=item.user.email,
+                full_name=item.user.full_name,
+                role=item.role,
+            )
+            for item in members
+        }
+        return self._group_read(group, by_user)
 
     async def _unique_slug(self, base: str) -> str:
         candidate = base

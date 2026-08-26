@@ -12,6 +12,7 @@ from app.models import (
     Exam,
     ExamAssignment,
     ExamAttempt,
+    ExamGroupAssignment,
     ExamStatus,
     Flashcard,
     GenerationJob,
@@ -368,6 +369,36 @@ class ExamRepository:
     async def delete_assignment(self, assignment: ExamAssignment) -> None:
         await self.session.delete(assignment)
         await self.session.flush()
+
+    async def get_exam_group_assignment(
+        self, exam_id: UUID, group_id: UUID, organization_id: UUID
+    ) -> ExamGroupAssignment | None:
+        result = await self.session.execute(
+            select(ExamGroupAssignment).where(
+                ExamGroupAssignment.exam_id == exam_id,
+                ExamGroupAssignment.group_id == group_id,
+                ExamGroupAssignment.organization_id == organization_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def add_exam_group_assignment(
+        self, assignment: ExamGroupAssignment
+    ) -> ExamGroupAssignment:
+        self.session.add(assignment)
+        await self.session.flush()
+        return assignment
+
+    async def list_exam_group_ids(self, exam_id: UUID, organization_id: UUID) -> list[UUID]:
+        result = await self.session.execute(
+            select(ExamGroupAssignment.group_id)
+            .where(
+                ExamGroupAssignment.exam_id == exam_id,
+                ExamGroupAssignment.organization_id == organization_id,
+            )
+            .order_by(ExamGroupAssignment.created_at)
+        )
+        return list(result.scalars().all())
 
     async def users_by_ids(self, user_ids: set[UUID]) -> dict[UUID, User]:
         if not user_ids:

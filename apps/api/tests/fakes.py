@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from app.models import Membership, MembershipRole, Organization, PlanTier, User
+from app.models import Invitation, Membership, MembershipRole, Organization, PlanTier, User
 from app.models.document import Document, DocumentStatus
 from app.models.exam import Exam, ExamAssignment, ExamKind, ExamStatus, Question
+from app.models.identity import InvitationStatus
 from app.models.mixins import utcnow
+from app.services.mail import OutboundEmail
 
 
 def now() -> datetime:
@@ -101,6 +103,152 @@ class FakeMembershipRepo:
         return await self.get(user_id, organization_id)
 
 
+class FakeGroupRepo:
+    def __init__(self) -> None:
+        self.groups: list = []
+        self.members: list = []
+
+    async def add(self, group):
+        ensure_id(group)
+        if not hasattr(group, "members") or group.members is None:
+            group.members = []
+        self.groups.append(group)
+        return group
+
+    async def get(self, group_id: UUID, organization_id: UUID):
+        for group in self.groups:
+            if group.id == group_id and group.organization_id == organization_id:
+                return group
+        return None
+
+    async def get_by_name(self, organization_id: UUID, name: str):
+        for group in self.groups:
+            if group.organization_id == organization_id and group.name == name:
+                return group
+        return None
+
+    async def list_for_org(self, organization_id: UUID):
+        return [group for group in self.groups if group.organization_id == organization_id]
+
+    async def delete(self, group) -> None:
+        self.groups = [item for item in self.groups if item.id != group.id]
+        self.members = [item for item in self.members if item.group_id != group.id]
+        group.members = []
+
+    async def add_member(self, member):
+        ensure_id(member)
+        self.members.append(member)
+        for group in self.groups:
+            if group.id == member.group_id:
+                group.members.append(member)
+        return member
+
+    async def get_member(self, group_id: UUID, user_id: UUID, organization_id: UUID):
+        for item in self.members:
+            if (
+                item.group_id == group_id
+                and item.user_id == user_id
+                and item.organization_id == organization_id
+            ):
+                return item
+        return None
+
+    async def delete_member(self, member) -> None:
+        self.members = [item for item in self.members if item.id != member.id]
+        for group in self.groups:
+            if group.id == member.group_id:
+                group.members = [item for item in group.members if item.id != member.id]
+
+    async def member_user_ids(self, group_id: UUID, organization_id: UUID) -> set[UUID]:
+        return {
+            item.user_id
+            for item in self.members
+            if item.group_id == group_id and item.organization_id == organization_id
+        }
+
+    async def delete_user_from_org(self, organization_id: UUID, user_id: UUID) -> None:
+        remaining = []
+        for item in self.members:
+            if item.organization_id == organization_id and item.user_id == user_id:
+                for group in self.groups:
+                    if group.id == item.group_id:
+                        group.members = [row for row in group.members if row.id != item.id]
+                continue
+            remaining.append(item)
+        self.members = remaining
+
+    async def replace_members(self, group, organization_id: UUID, user_ids: set[UUID]) -> None:
+        from app.models.group import GroupMember
+
+        current = {item.user_id: item for item in list(group.members)}
+        for user_id, item in current.items():
+            if user_id not in user_ids:
+                await self.delete_member(item)
+        for user_id in user_ids:
+            if user_id in current:
+                continue
+            await self.add_member(
+                GroupMember(organization_id=organization_id, group_id=group.id, user_id=user_id)
+            )
+
+
+class FakeInvitationRepo:
+    def __init__(self) -> None:
+        self.items: list[Invitation] = []
+
+    async def add(self, invitation: Invitation) -> Invitation:
+        ensure_id(invitation)
+        self.items.append(invitation)
+        return invitation
+
+    async def get(self, invitation_id: UUID, organization_id: UUID) -> Invitation | None:
+        return next(
+            (
+                item
+                for item in self.items
+                if item.id == invitation_id and item.organization_id == organization_id
+            ),
+            None,
+        )
+
+    async def get_by_token(self, token: str) -> Invitation | None:
+        return next((item for item in self.items if item.token == token), None)
+
+    async def get_pending(self, organization_id: UUID, email: str) -> Invitation | None:
+        return next(
+            (
+                item
+                for item in self.items
+                if item.organization_id == organization_id
+                and item.email.lower() == email.lower()
+                and item.status == InvitationStatus.PENDING
+            ),
+            None,
+        )
+
+    async def list_for_org(self, organization_id: UUID) -> list[Invitation]:
+        return [item for item in self.items if item.organization_id == organization_id]
+
+    async def list_pending_for_email(self, email: str) -> list[Invitation]:
+        return [
+            item
+            for item in self.items
+            if item.email.lower() == email.lower() and item.status == InvitationStatus.PENDING
+        ]
+
+
+class FakeMailer:
+    def __init__(self, *, configured: bool = True) -> None:
+        self.configured = configured
+        self.sent: list[OutboundEmail] = []
+        self.error: Exception | None = None
+
+    def send(self, message: OutboundEmail) -> None:
+        if self.error:
+            raise self.error
+        self.sent.append(message)
+
+
 class FakeTxRepo:
     def __init__(self) -> None:
         self.items: list[object] = []
@@ -144,6 +292,7 @@ class FakeExamRepo:
         self.exams: list[Exam] = []
         self.questions: list[Question] = []
         self.assignments: list[ExamAssignment] = []
+        self.group_assignments: list = []
         self.attempts: list[object] = []
         self.people: dict[UUID, User] = {}
 
@@ -268,6 +417,28 @@ class FakeExamRepo:
             ):
                 empty[item.user_id] = (item.score, item.id)
         return empty
+
+    async def get_exam_group_assignment(self, exam_id: UUID, group_id: UUID, organization_id: UUID):
+        for item in self.group_assignments:
+            if (
+                item.exam_id == exam_id
+                and item.group_id == group_id
+                and item.organization_id == organization_id
+            ):
+                return item
+        return None
+
+    async def add_exam_group_assignment(self, assignment):
+        ensure_id(assignment)
+        self.group_assignments.append(assignment)
+        return assignment
+
+    async def list_exam_group_ids(self, exam_id: UUID, organization_id: UUID) -> list[UUID]:
+        return [
+            item.group_id
+            for item in self.group_assignments
+            if item.exam_id == exam_id and item.organization_id == organization_id
+        ]
 
 
 def make_user(

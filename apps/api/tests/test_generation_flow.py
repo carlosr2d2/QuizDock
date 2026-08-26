@@ -16,6 +16,7 @@ from app.services.rag import RetrievedContext
 from tests.fakes import (
     FakeDocumentRepo,
     FakeExamRepo,
+    FakeGroupRepo,
     FakeMembershipRepo,
     FakeOrgRepo,
     FakeSession,
@@ -45,6 +46,7 @@ def _exam_service(org, *, document=None, exam=None) -> ExamService:
         if not hasattr(exam, "questions") or exam.questions is None:
             exam.questions = []
     service.memberships = FakeMembershipRepo()
+    service.groups = FakeGroupRepo()
     service.billing = BillingService(session)
     service.billing.orgs = service.orgs
     service.billing.txs = FakeTxRepo()

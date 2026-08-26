@@ -12,6 +12,7 @@ from app.models import (
     Exam,
     ExamAssignment,
     ExamAttempt,
+    ExamGroupAssignment,
     ExamKind,
     ExamStatus,
     Flashcard,
@@ -22,6 +23,7 @@ from app.models import (
 )
 from app.models.exam import AssignmentStatus
 from app.repositories.content import DocumentRepository, ExamRepository, FlashcardRepository, JobRepository
+from app.repositories.groups import GroupRepository
 from app.repositories.identity import MembershipRepository, OrganizationRepository
 from app.schemas.content import (
     AssignmentRead,
@@ -84,6 +86,7 @@ class ExamService:
         self.repo = ExamRepository(session)
         self.documents = DocumentRepository(session)
         self.memberships = MembershipRepository(session)
+        self.groups = GroupRepository(session)
         self.orgs = OrganizationRepository(session)
         self.billing = BillingService(session)
 
@@ -187,6 +190,7 @@ class ExamService:
             questions=questions,
             attempts=attempts,
             assignments=roster,
+            assigned_group_ids=await self.repo.list_exam_group_ids(exam.id, organization_id),
         )
 
     async def progress(
@@ -534,12 +538,34 @@ class ExamService:
             raise ConflictError("Solo se asignan exámenes listos.")
         members = await self.memberships.list_with_users(organization_id)
         member_ids = {item.user_id for item in members}
-        targets = member_ids if payload.all_members else set(payload.user_ids)
+        targets: set[UUID] = set(payload.user_ids)
+        if payload.all_members:
+            targets = set(member_ids)
+        for group_id in payload.group_ids:
+            group = await self.groups.get(group_id, organization_id)
+            if group is None:
+                raise NotFoundError("Grupo no encontrado")
+            group_members = await self.groups.member_user_ids(group.id, organization_id)
+            if not group_members:
+                raise DomainError(f"El grupo «{group.name}» no tiene integrantes.")
+            targets |= group_members
+            existing_group = await self.repo.get_exam_group_assignment(
+                exam.id, group.id, organization_id
+            )
+            if existing_group is None:
+                await self.repo.add_exam_group_assignment(
+                    ExamGroupAssignment(
+                        organization_id=organization_id,
+                        exam_id=exam.id,
+                        group_id=group.id,
+                        assigned_by_user_id=actor_id,
+                    )
+                )
         unknown = targets - member_ids
         if unknown:
             raise DomainError("Hay usuarios que no pertenecen a este workspace.")
         if not targets:
-            raise DomainError("Selecciona al menos un miembro.")
+            raise DomainError("Selecciona al menos un miembro o un grupo.")
         for user_id in targets:
             existing = await self.repo.get_assignment(exam.id, user_id, organization_id)
             if existing is not None:

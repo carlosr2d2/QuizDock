@@ -175,3 +175,19 @@ class ExamAssignment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         index=True,
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ExamGroupAssignment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "exam_group_assignments"
+    __table_args__ = (UniqueConstraint("exam_id", "group_id", name="uq_exam_group_assignment"),)
+
+    organization_id: Mapped[UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        index=True,
+    )
+    exam_id: Mapped[UUID] = mapped_column(ForeignKey("exams.id", ondelete="CASCADE"), index=True)
+    group_id: Mapped[UUID] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    assigned_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )

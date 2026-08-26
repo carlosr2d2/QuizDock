@@ -42,6 +42,16 @@ class Settings(BaseSettings):
     llm_embedding_model: str = "text-embedding-3-small"
     llm_timeout_seconds: float = 90.0
 
+    app_public_url: str = "http://localhost:3000"
+    smtp_host: str = ""
+    smtp_port: int = 1025
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "QuizDock <noreply@localhost>"
+    smtp_use_tls: bool = False
+    smtp_use_ssl: bool = False
+    smtp_timeout_seconds: float = 10.0
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def cors_origin_list(self) -> list[str]:

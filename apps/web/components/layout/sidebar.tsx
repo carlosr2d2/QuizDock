@@ -27,7 +27,16 @@ const nav = [
   { href: "/documents", label: "Documentos", icon: FileText },
   { href: "/exams", label: "Exámenes", icon: BookOpen },
   { href: "/flashcards", label: "Flashcards", icon: Layers },
-  { href: "/team", label: "Equipo", icon: Users },
+  {
+    href: "/team/members",
+    label: "Equipo",
+    icon: Users,
+    children: [
+      { href: "/team/members", label: "Miembros" },
+      { href: "/team/groups", label: "Grupos" },
+      { href: "/team/invite", label: "Invitar" },
+    ],
+  },
 ];
 
 export function Sidebar() {
@@ -81,7 +90,7 @@ export function Sidebar() {
           </label>
         ) : null}
         <Link
-          href="/team"
+          href="/team/invite"
           className="mt-2 block text-xs text-sidebar-muted hover:text-sidebar-foreground hover:underline"
         >
           {me.data && me.data.memberships.length < 2 ? "Crear equipo e invitar →" : "Invitar al equipo →"}
@@ -89,20 +98,46 @@ export function Sidebar() {
       </div>
       <nav className="flex flex-1 flex-col gap-1 px-3">
         {nav.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
+          const children = "children" in item ? item.children : undefined;
+          const sectionActive = Boolean(children) && (pathname === "/team" || pathname.startsWith("/team/"));
+          const itemActive =
+            !children && (pathname === item.href || pathname.startsWith(`${item.href}/`));
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground",
-                active && "bg-accent font-medium text-accent-foreground hover:bg-accent hover:text-accent-foreground",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </Link>
+            <div key={item.href}>
+              <Link
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground",
+                  itemActive &&
+                    "bg-accent font-medium text-accent-foreground hover:bg-accent hover:text-accent-foreground",
+                  children && sectionActive && "text-sidebar-foreground",
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+              {children ? (
+                <div className="mb-1 ml-4 mt-0.5 flex flex-col gap-0.5 border-l border-sidebar-border pl-3">
+                  {children.map((child) => {
+                    const childActive = pathname === child.href;
+                    return (
+                      <Link
+                        key={child.href}
+                        href={child.href}
+                        className={cn(
+                          "rounded-md px-3 py-1.5 text-sm text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground",
+                          childActive &&
+                            "bg-accent font-medium text-accent-foreground hover:bg-accent hover:text-accent-foreground",
+                        )}
+                      >
+                        {child.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
           );
         })}
       </nav>

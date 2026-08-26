@@ -25,6 +25,7 @@ docker compose up --build
 - Web: [http://localhost:3000](http://localhost:3000)
 - API / OpenAPI: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
 - Flower (Celery): [http://localhost:5555](http://localhost:5555)
+- Mailpit (correo local): [http://localhost:8025](http://localhost:8025)
 - PostgreSQL + pgvector: `localhost:5432`
 - Redis: `localhost:6379`
 
@@ -60,7 +61,7 @@ docker compose exec api pip install -r requirements-dev.txt
 docker compose exec api pytest
 ```
 
-Cubren tipos de pregunta y puntuación, autenticación (registro/login/JWT), créditos (débito/reembolso) y el flujo de generación de exámenes (permisos, cola, persistencia).
+Cubren tipos de pregunta y puntuación, autenticación (registro/login/JWT), créditos (débito/reembolso), el flujo de generación de exámenes (permisos, cola, persistencia) e invitaciones por correo.
 
 ## Arranque local (desarrollo)
 
@@ -101,6 +102,7 @@ npm run dev
 2. Subir un PDF, `.txt` o `.md` en **Documentos**. El worker extrae el texto.
 3. Cuando el estado sea *listo*, generar un **examen** (8 créditos) o **flashcards** (12 créditos). El worker indexa el documento en fragmentos (RAG) y genera **un ítem por fragmento** relevante.
 4. Hacer el cuestionario o repasar tarjetas (SM-2). Si la generación falla, los créditos se reembolsan.
+5. En un workspace de equipo, **Equipo → Invitar** envía el correo. En local los mensajes aparecen en [Mailpit](http://localhost:8025).
 
 Sin `LLM_API_KEY`, el worker usa embeddings locales (hash) y un generador heurístico. Con Gemini, pon en `.env` una clave de [Google AI Studio](https://aistudio.google.com/apikey) (`AQ.` o `AIza`) y:
 
