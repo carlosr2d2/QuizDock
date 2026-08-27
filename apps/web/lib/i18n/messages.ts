@@ -28,6 +28,7 @@ export const es = {
     preparing: "Preparando…",
     progress: "Progreso",
     progressValue: "{current} de {total} · {percent}%",
+    percent: "{percent}%",
     loadingList: "Cargando lista…",
     language: "Idioma",
     spanish: "Español",
@@ -188,6 +189,8 @@ export const es = {
     memberHint: "Consulta los documentos del workspace. Solo un administrador puede subir archivos o generar exámenes.",
     upload: "Subir documento",
     uploading: "Subiendo…",
+    uploadProgress: "Subiendo {name}",
+    processingFile: "Procesando {name}",
     newExam: "Nuevo examen",
     newExamBody:
       "{title}. Elige cuántas preguntas generar. Cada una cuesta {cost} crédito. El examen mezcla verdadero/falso y opción múltiple (una o varias correctas).",
@@ -477,6 +480,7 @@ export const en: typeof es extends infer T ? { [K in keyof T]: T[K] extends stri
     preparing: "Preparing…",
     progress: "Progress",
     progressValue: "{current} of {total} · {percent}%",
+    percent: "{percent}%",
     loadingList: "Loading list…",
     language: "Language",
     spanish: "Español",
@@ -637,6 +641,8 @@ export const en: typeof es extends infer T ? { [K in keyof T]: T[K] extends stri
     memberHint: "Browse workspace documents. Only an admin can upload files or generate exams.",
     upload: "Upload document",
     uploading: "Uploading…",
+    uploadProgress: "Uploading {name}",
+    processingFile: "Processing {name}",
     newExam: "New exam",
     newExamBody:
       "{title}. Choose how many questions to generate. Each costs {cost} credit. The exam mixes true/false and multiple choice (one or more correct).",

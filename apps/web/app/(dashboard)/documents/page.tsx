@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { BookOpen, Layers } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { DocumentCover } from "@/components/document-cover";
 import { Badge } from "@/components/ui/badge";
@@ -11,10 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle, surfaceListClass } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
-import { ListLoader, Loader, Spinner } from "@/components/ui/loader";
+import { ListLoader, Loader, ProgressBar } from "@/components/ui/loader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiUpload } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/provider";
 import { canCreateContent } from "@/lib/permissions";
 import { cn, formatDateTime } from "@/lib/utils";
@@ -33,6 +33,12 @@ export default function DocumentsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [examDoc, setExamDoc] = useState<Document | null>(null);
   const [questionCount, setQuestionCount] = useState(10);
+  const [uploadProgress, setUploadProgress] = useState<{
+    filename: string;
+    percent: number;
+    phase: "uploading" | "processing";
+    documentId?: string;
+  } | null>(null);
 
   const documents = useQuery({
     queryKey: ["documents"],
@@ -56,13 +62,39 @@ export default function DocumentsPage() {
 
   const upload = useMutation({
     mutationFn: async (file: File) => {
+      setActionError(null);
+      setUploadProgress({ filename: file.name, percent: 0, phase: "uploading" });
       const body = new FormData();
       body.append("file", file);
       body.append("language", "auto");
-      return apiFetch<Document>("/api/v1/documents", { method: "POST", body });
+      return apiUpload<Document>("/api/v1/documents", body, (percent) => {
+        setUploadProgress((current) =>
+          current?.phase === "uploading" ? { ...current, percent } : current,
+        );
+      });
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents"] }),
+    onSuccess: (doc) => {
+      setUploadProgress({
+        filename: doc.title || doc.filename,
+        percent: 100,
+        phase: "processing",
+        documentId: doc.id,
+      });
+      void queryClient.invalidateQueries({ queryKey: ["documents"] });
+    },
+    onError: (error: Error) => {
+      setUploadProgress(null);
+      setActionError(error.message);
+    },
   });
+
+  useEffect(() => {
+    if (!uploadProgress?.documentId || uploadProgress.phase !== "processing") return;
+    const item = documents.data?.find((doc) => doc.id === uploadProgress.documentId);
+    if (item && (item.status === "ready" || item.status === "failed")) {
+      setUploadProgress(null);
+    }
+  }, [documents.data, uploadProgress]);
 
   const generateExam = useMutation({
     mutationFn: ({ documentId, questionCount: count }: { documentId: string; questionCount: number }) =>
@@ -132,6 +164,22 @@ export default function DocumentsPage() {
           </div>
         ) : null}
       </div>
+
+      {uploadProgress ? (
+        <Card>
+          <ProgressBar
+            kind="percent"
+            max={100}
+            value={uploadProgress.phase === "uploading" ? uploadProgress.percent : 0}
+            showValue={uploadProgress.phase === "uploading"}
+            label={
+              uploadProgress.phase === "uploading"
+                ? t("documents.uploadProgress", { name: uploadProgress.filename })
+                : t("documents.processingFile", { name: uploadProgress.filename })
+            }
+          />
+        </Card>
+      ) : null}
 
       {examDoc ? (
         <Card>
@@ -238,20 +286,28 @@ export default function DocumentsPage() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Badge
-                  className={
-                    doc.status === "ready"
-                      ? "border-accent/30 bg-accent/10 text-accent"
-                      : doc.status === "failed"
-                        ? "border-destructive/30 bg-destructive/10 text-destructive"
-                        : "gap-1.5"
-                  }
-                >
-                  {doc.status === "uploaded" || doc.status === "processing" ? (
-                    <Spinner className="h-3 w-3" />
-                  ) : null}
-                  {doc.status === "uploaded" ? t("status.queued") : t(`status.${doc.status}`)}
-                </Badge>
+                {doc.status === "uploaded" || doc.status === "processing" ? (
+                  <ProgressBar
+                    compact
+                    className="w-40"
+                    value={0}
+                    max={1}
+                    showValue={false}
+                    label={doc.status === "uploaded" ? t("status.queued") : t("status.processing")}
+                  />
+                ) : (
+                  <Badge
+                    className={
+                      doc.status === "ready"
+                        ? "border-accent/30 bg-accent/10 text-accent"
+                        : doc.status === "failed"
+                          ? "border-destructive/30 bg-destructive/10 text-destructive"
+                          : undefined
+                    }
+                  >
+                    {t(`status.${doc.status}`)}
+                  </Badge>
+                )}
                 {doc.status === "ready" && canAuthor ? (
                   <>
                     <Button
@@ -286,13 +342,12 @@ export default function DocumentsPage() {
             </li>
           ))}
         </ul>
-      ) : (
+      ) : uploadProgress ? null : (
         <EmptyState
           title={t("documents.emptyTitle")}
           description={canAuthor ? t("documents.emptyAuthor") : t("documents.emptyMember")}
         />
       )}
-      {upload.error ? <p className="text-sm text-destructive">{upload.error.message}</p> : null}
       {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
     </div>
   );

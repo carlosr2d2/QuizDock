@@ -56,27 +56,36 @@ export function ProgressBar({
   max,
   label,
   compact = false,
+  kind = "steps",
+  showValue = true,
   className,
 }: {
   value: number;
   max: number;
   label?: string;
   compact?: boolean;
+  kind?: "steps" | "percent";
+  showValue?: boolean;
   className?: string;
 }) {
   const t = useT();
   const total = Math.max(max, 1);
   const current = Math.max(0, Math.min(value, total));
-  const started = current > 0;
-  const percent = started ? Math.round((current / total) * 100) : 0;
+  const percent =
+    kind === "percent"
+      ? Math.max(0, Math.min(100, Math.round(value)))
+      : current > 0
+        ? Math.round((current / total) * 100)
+        : 0;
+  const started = percent > 0;
 
   return (
     <div
       className={cn("space-y-2", className)}
       role="progressbar"
       aria-valuemin={0}
-      aria-valuemax={total}
-      aria-valuenow={current}
+      aria-valuemax={kind === "percent" ? 100 : total}
+      aria-valuenow={kind === "percent" ? percent : current}
       aria-label={label ?? t("common.progress")}
     >
       {label ? (
@@ -85,18 +94,22 @@ export function ProgressBar({
       <div className={cn("overflow-hidden rounded-full bg-muted", compact ? "h-1.5" : "h-2.5")}>
         {started ? (
           <div
-            className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
+            className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out"
             style={{ width: `${percent}%` }}
           />
         ) : (
           <div className="h-full w-1/3 animate-pulse rounded-full bg-accent/70" />
         )}
       </div>
-      <p className={cn("text-muted-foreground", compact ? "text-[11px]" : "text-xs")}>
-        {started
-          ? t("common.progressValue", { current, total, percent })
-          : t("common.preparing")}
-      </p>
+      {showValue ? (
+        <p className={cn("text-muted-foreground", compact ? "text-[11px]" : "text-xs")}>
+          {started
+            ? kind === "percent"
+              ? t("common.percent", { percent })
+              : t("common.progressValue", { current, total, percent })
+            : t("common.preparing")}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -105,6 +105,73 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   return (await response.json()) as T;
 }
 
+export async function apiUpload<T>(
+  path: string,
+  body: FormData,
+  onProgress?: (percent: number) => void,
+): Promise<T> {
+  const token = getToken();
+  const orgId = getOrgId();
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_URL}${path}`);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    if (orgId) xhr.setRequestHeader("X-Organization-Id", orgId);
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable || event.total <= 0) return;
+      onProgress?.(Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100))));
+    };
+    xhr.upload.onload = () => onProgress?.(100);
+
+    xhr.onload = () => {
+      const status = xhr.status;
+      const raw = xhr.responseText || "";
+      if (status === 401) {
+        void redirectToLogin();
+      }
+      if (status < 200 || status >= 300) {
+        let detail = xhr.statusText;
+        try {
+          const data = JSON.parse(raw) as { detail?: unknown };
+          if (typeof data.detail === "string") {
+            detail = data.detail;
+          } else if (Array.isArray(data.detail)) {
+            detail = data.detail
+              .map((item) =>
+                typeof item === "object" && item && "msg" in item ? String(item.msg) : String(item),
+              )
+              .join(". ");
+          }
+        } catch {
+          if (raw) detail = raw.slice(0, 400);
+        }
+        const message = status >= 500 ? tStored("error.server") : detail;
+        reject(new ApiError(status, message, detail));
+        return;
+      }
+      if (status === 204) {
+        resolve(undefined as T);
+        return;
+      }
+      try {
+        resolve(JSON.parse(raw) as T);
+      } catch {
+        reject(new ApiError(status, tStored("error.unexpected"), raw));
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new ApiError(0, tStored("error.network")));
+    };
+    xhr.onabort = () => {
+      reject(new ApiError(0, tStored("error.network")));
+    };
+    xhr.send(body);
+  });
+}
+
 export async function reportClientError(input: {
   path?: string;
   message: string;

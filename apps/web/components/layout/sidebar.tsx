@@ -82,8 +82,8 @@ export function Sidebar() {
   ];
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="px-5 py-5">
+    <aside className="flex h-full w-60 shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+      <div className="shrink-0 px-5 py-5">
         <Logo inverted />
         {me.isLoading ? (
           <Loader label={t("common.loadingWorkspace")} className="mt-4 text-sidebar-muted" />
@@ -118,7 +118,7 @@ export function Sidebar() {
           </Link>
         ) : null}
       </div>
-      <nav className="flex flex-1 flex-col gap-1 px-3">
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3">
         {nav.map((item) => {
           const Icon = item.icon;
           const children = "children" in item ? item.children : undefined;
@@ -163,7 +163,7 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="border-t border-sidebar-border p-3">
+      <div className="shrink-0 border-t border-sidebar-border p-3">
         <div className="flex items-center justify-between gap-2 px-2 pb-2">
           <div className="min-w-0">
             <p className="flex items-center gap-2 truncate text-sm font-medium text-sidebar-foreground">
