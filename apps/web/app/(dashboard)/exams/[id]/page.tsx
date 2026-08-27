@@ -13,6 +13,7 @@ import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { PageLoader, Loader, ProgressBar } from "@/components/ui/loader";
 import { ErrorState } from "@/components/ui/error-state";
 import { apiFetch } from "@/lib/api";
+import { useI18n, useT } from "@/lib/i18n/provider";
 import { cn, formatDateTime, formatScore } from "@/lib/utils";
 import type {
   Attempt,
@@ -26,14 +27,16 @@ import type {
 } from "@/types/api";
 
 export default function ExamPlayerPage() {
+  const t = useT();
   return (
-    <Suspense fallback={<PageLoader label="Cargando evaluación…" />}>
+    <Suspense fallback={<PageLoader label={t("exams.loadingExam")} />}>
       <ExamPlayer />
     </Suspense>
   );
 }
 
 function ExamPlayer() {
+  const { t, locale } = useI18n();
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const examId = params.id;
@@ -99,7 +102,6 @@ function ExamPlayer() {
   useEffect(() => {
     if (!targetAttemptId || result?.id === targetAttemptId) return;
     openAttempt.mutate(targetAttemptId);
-    // mutate is stable; we only reopen when the target attempt changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetAttemptId, result?.id]);
 
@@ -116,13 +118,13 @@ function ExamPlayer() {
   }
 
   if (exam.isLoading) {
-    return <PageLoader label="Cargando evaluación…" />;
+    return <PageLoader label={t("exams.loadingExam")} />;
   }
   if (exam.error || !exam.data) {
     return (
       <ErrorState
-        title="No se pudo abrir la evaluación"
-        error={exam.error ?? new Error("No encontrado")}
+        title={t("exams.openError")}
+        error={exam.error ?? new Error(t("exams.notFound"))}
         onRetry={() => void exam.refetch()}
       />
     );
@@ -146,12 +148,15 @@ function ExamPlayer() {
         ) : null}
         {data.attempt_count ? (
           <p className="mt-1 text-sm text-muted-foreground">
-            Última {formatScore(data.last_score)} · {data.attempt_count}{" "}
-            {data.attempt_count === 1 ? "intento" : "intentos"}
+            {t("exams.lastScore", {
+              score: formatScore(data.last_score),
+              count: data.attempt_count,
+              attemptLabel: data.attempt_count === 1 ? t("overview.attemptOne") : t("overview.attemptOther"),
+            })}
           </p>
         ) : null}
         {data.assigned_to_me && data.assignment_status === "pending" ? (
-          <p className="mt-1 text-sm text-accent">Asignado por tu empresa · pendiente</p>
+          <p className="mt-1 text-sm text-accent">{t("exams.assignedPending")}</p>
         ) : null}
       </div>
     </div>
@@ -176,17 +181,15 @@ function ExamPlayer() {
     const current = data.generated_count ?? 0;
     const label =
       current > 0
-        ? `Creando pregunta ${current} de ${total}`
-        : "Preparando el documento y los fragmentos…";
+        ? t("exams.creatingQuestion", { current, total })
+        : t("exams.preparingChunks");
     return (
       <div className="space-y-6">
-        <Badge>generando</Badge>
+        <Badge>{t("status.generating")}</Badge>
         {heading}
         <div className="max-w-lg rounded-xl border border-border bg-card p-5">
           <ProgressBar value={current} max={total} label={label} />
-          <p className="mt-3 text-xs text-muted-foreground">
-            Esta vista se actualiza sola. Verdadero/falso y opción múltiple se generan en paralelo.
-          </p>
+          <p className="mt-3 text-xs text-muted-foreground">{t("exams.generatingHint")}</p>
         </div>
       </div>
     );
@@ -195,13 +198,13 @@ function ExamPlayer() {
   if (data.status === "failed") {
     return (
       <div className="space-y-3">
-        <Badge>error</Badge>
+        <Badge>{t("status.failed")}</Badge>
         {heading}
         <p className="text-sm text-destructive">
-          {data.error_message ?? "La generación falló. Los créditos se reembolsaron."}
+          {data.error_message ?? t("exams.generateFailed")}
         </p>
         <Link href="/documents" className="text-sm underline-offset-4 hover:underline">
-          Volver a documentos
+          {t("exams.backDocuments")}
         </Link>
       </div>
     );
@@ -212,7 +215,7 @@ function ExamPlayer() {
       <div className="space-y-3">
         {heading}
         {assignPanel}
-        <PageLoader label="Cargando intento…" />
+        <PageLoader label={t("exams.loadingAttempt")} />
         {openAttempt.error ? (
           <p className="text-sm text-destructive">{openAttempt.error.message}</p>
         ) : null}
@@ -228,19 +231,19 @@ function ExamPlayer() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-sm text-muted-foreground">
-              {result.is_own ? "Tu resultado" : `Respuestas de ${result.full_name || result.email}`}
+              {result.is_own ? t("exams.yourResult") : t("exams.answersOf", { name: result.full_name || result.email })}
             </p>
             <h2 className="mt-1 text-2xl font-semibold tracking-tight">{formatScore(result.score)}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(result.completed_at)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(result.completed_at, locale)}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {result.is_own ? (
               <Button type="button" onClick={redo}>
-                Rehacer
+                {t("exams.redo")}
               </Button>
             ) : null}
             <Link href="/exams">
-              <Button variant="outline">Volver a exámenes</Button>
+              <Button variant="outline">{t("exams.backExams")}</Button>
             </Link>
           </div>
         </div>
@@ -253,15 +256,23 @@ function ExamPlayer() {
         ) : null}
         <ol className="space-y-4">
           {result.results.map((item, index) => (
-            <li key={item.question_id} className="rounded-xl border border-border bg-card p-5">
+            <li
+              key={item.question_id}
+              className={cn(
+                "rounded-xl border p-5",
+                item.is_correct
+                  ? "border-accent/30 bg-accent/10"
+                  : "border-destructive/30 bg-destructive/10",
+              )}
+            >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <p className="text-sm font-medium">
                   {index + 1}. {item.prompt}
                 </p>
-                <Badge>{questionKindLabel(item.kind)}</Badge>
+                <Badge>{questionKindLabel(item.kind, t)}</Badge>
               </div>
               <p className={cn("mt-2 text-sm", item.is_correct ? "text-accent" : "text-destructive")}>
-                {item.is_correct ? "Correcto" : "Incorrecto"}
+                {item.is_correct ? t("exams.correct") : t("exams.incorrect")}
               </p>
               <AttemptAnswer item={item} />
               {item.explanation ? (
@@ -288,8 +299,8 @@ function ExamPlayer() {
       }}
     >
       <p className="text-sm text-muted-foreground">
-          {data.questions.length} preguntas · verdadero/falso y opción múltiple · respuestas al enviar
-          {history.length ? " · rehacer no consume créditos extra" : ""}
+          {t("exams.mixHint", { count: data.questions.length })}
+          {history.length ? t("exams.redoFree") : ""}
         </p>
       <AttemptHistory attempts={history} onSelect={viewAttempt} />
       {openAttempt.error ? (
@@ -303,10 +314,10 @@ function ExamPlayer() {
               <p className="text-sm font-medium">
                 {index + 1}. {question.prompt}
               </p>
-              <Badge>{questionKindLabel(question.kind)}</Badge>
+              <Badge>{questionKindLabel(question.kind, t)}</Badge>
             </div>
             {question.kind === "multiple_choice" ? (
-              <p className="mt-2 text-xs text-muted-foreground">Selecciona todas las correctas.</p>
+              <p className="mt-2 text-xs text-muted-foreground">{t("exams.selectAll")}</p>
             ) : null}
             <QuestionOptions
               question={question}
@@ -319,21 +330,21 @@ function ExamPlayer() {
 
       {submit.error ? <p className="text-sm text-destructive">{submit.error.message}</p> : null}
       <Button type="submit" loading={submit.isPending} disabled={data.questions.length === 0}>
-        {submit.isPending ? "Enviando…" : data.attempt_count ? "Enviar de nuevo" : "Enviar respuestas"}
+        {submit.isPending ? t("exams.submitting") : data.attempt_count ? t("exams.submitAgain") : t("exams.submit")}
       </Button>
     </form>
     </div>
   );
 }
 
-function questionKindLabel(kind?: QuestionKind | string) {
+function questionKindLabel(kind: QuestionKind | string | undefined, t: (key: string) => string) {
   switch (kind) {
     case "true_false":
-      return "Falso / Verdadero";
+      return t("exams.trueFalse");
     case "multiple_choice":
-      return "Varias correctas";
+      return t("exams.multiCorrect");
     default:
-      return "Opción múltiple";
+      return t("exams.singleChoice");
   }
 }
 
@@ -343,8 +354,8 @@ function selectedIndices(value: number | number[] | undefined): number[] {
   return [];
 }
 
-function formatChoices(options: string[], indices: number[]) {
-  if (!indices.length) return "Sin respuesta";
+function formatChoices(options: string[], indices: number[], empty: string) {
+  if (!indices.length) return empty;
   return indices
     .map((index) => options[index])
     .filter(Boolean)
@@ -393,21 +404,25 @@ function QuestionOptions({
 }
 
 function AttemptAnswer({ item }: { item: QuestionResult }) {
+  const t = useT();
   const selected = item.selected_indices?.length
     ? item.selected_indices
     : item.selected_index != null
       ? [item.selected_index]
       : [];
   const correct = item.correct_indices?.length ? item.correct_indices : [item.correct_index];
+  const empty = t("exams.noAnswer");
   if (item.is_correct) {
     return (
-      <p className="mt-2 text-sm text-muted-foreground">Tu respuesta: {formatChoices(item.options, selected)}</p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        {t("exams.yourAnswer", { answer: formatChoices(item.options, selected, empty) })}
+      </p>
     );
   }
   return (
     <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-      <p>Tu respuesta: {formatChoices(item.options, selected)}</p>
-      <p>Correcta: {formatChoices(item.options, correct)}</p>
+      <p>{t("exams.yourAnswer", { answer: formatChoices(item.options, selected, empty) })}</p>
+      <p>{t("exams.correctChoice", { answer: formatChoices(item.options, correct, empty) })}</p>
     </div>
   );
 }
@@ -421,14 +436,15 @@ function AttemptHistory({
   activeId?: string;
   onSelect: (item: AttemptSummary) => void;
 }) {
+  const { t, locale } = useI18n();
   if (!attempts.length) return null;
   return (
-    <AttemptHistoryCard description="Abre un intento para ver tus respuestas y la corrección.">
+    <AttemptHistoryCard description={t("exams.historyBody")}>
       {attempts.map((item, index) => (
         <li key={item.id}>
           <AttemptRow
-            title={`Intento ${attempts.length - index}`}
-            subtitle={formatDateTime(item.completed_at)}
+            title={t("exams.attemptN", { n: attempts.length - index })}
+            subtitle={formatDateTime(item.completed_at, locale)}
             score={item.score}
             active={item.id === activeId}
             onClick={() => onSelect(item)}
@@ -450,6 +466,7 @@ function AssignPanel({
   activeAttemptId?: string | null;
   onViewAttempt: (attemptId: string) => void;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<string[]>([]);
   const team = useQuery({
@@ -485,11 +502,8 @@ function AssignPanel({
 
   return (
     <Card className="mt-6">
-      <CardTitle>Asignar a empleados</CardTitle>
-      <CardDescription>
-        Asigna a un grupo o a personas. Quien ya lo tenga no se duplica. Si ya lo hizo, abre la fila para
-        ver sus respuestas.
-      </CardDescription>
+      <CardTitle>{t("exams.assignEmployees")}</CardTitle>
+      <CardDescription>{t("exams.assignEmployeesBody")}</CardDescription>
       {exam.assignments?.length ? (
         <ul className="mt-4 space-y-1">
           {exam.assignments.map((item) => {
@@ -503,7 +517,7 @@ function AssignPanel({
                     subtitle={item.email}
                     score={item.last_score ?? 0}
                     active={activeAttemptId === item.last_attempt_id}
-                    actionLabel="Ver respuestas"
+                    actionLabel={t("exams.viewAnswers")}
                     onClick={() => onViewAttempt(item.last_attempt_id!)}
                   />
                 ) : (
@@ -513,7 +527,7 @@ function AssignPanel({
                       <p className="text-xs text-muted-foreground">{item.email}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      <Badge>pendiente</Badge>
+                      <Badge>{t("common.pending")}</Badge>
                       <Button
                         type="button"
                         size="sm"
@@ -521,7 +535,7 @@ function AssignPanel({
                         onClick={() => unassign.mutate(item.user_id)}
                         loading={unassign.isPending && unassign.variables === item.user_id}
                       >
-                        Quitar
+                        {t("team.remove")}
                       </Button>
                     </div>
                   </div>
@@ -531,15 +545,15 @@ function AssignPanel({
           })}
         </ul>
       ) : (
-        <p className="mt-3 text-sm text-muted-foreground">Nadie lo tiene asignado todavía.</p>
+        <p className="mt-3 text-sm text-muted-foreground">{t("exams.nobodyAssigned")}</p>
       )}
       {team.isLoading ? (
-        <Loader label="Cargando miembros…" className="mt-4" />
+        <Loader label={t("exams.loadingMembers")} className="mt-4" />
       ) : (
         <>
           {(team.data?.groups ?? []).length ? (
             <div className="mt-4 space-y-2">
-              <p className="text-sm font-medium">Grupos</p>
+              <p className="text-sm font-medium">{t("nav.groups")}</p>
               <ul className="space-y-2">
                 {(team.data?.groups ?? []).map((group) => {
                   const already = (exam.assigned_group_ids ?? []).includes(group.id);
@@ -552,7 +566,8 @@ function AssignPanel({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{group.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {group.member_count} {group.member_count === 1 ? "integrante" : "integrantes"}
+                          {group.member_count}{" "}
+                          {group.member_count === 1 ? t("exams.memberOne") : t("exams.memberOther")}
                         </p>
                       </div>
                       <Button
@@ -563,7 +578,7 @@ function AssignPanel({
                         loading={assign.isPending && assign.variables?.group_ids?.[0] === group.id}
                         onClick={() => assign.mutate({ group_ids: [group.id] })}
                       >
-                        {already ? "Asignado" : empty ? "Sin integrantes" : "Asignar grupo"}
+                        {already ? t("exams.alreadyAssigned") : empty ? t("exams.emptyGroup") : t("exams.assignGroup")}
                       </Button>
                     </li>
                   );
@@ -573,7 +588,7 @@ function AssignPanel({
           ) : null}
           {available.length ? (
             <div className="mt-4 space-y-3">
-              <p className="text-sm font-medium">Personas</p>
+              <p className="text-sm font-medium">{t("exams.people")}</p>
               <ul className="space-y-2">
             {available.map((member) => (
               <li key={member.user_id}>
@@ -599,7 +614,7 @@ function AssignPanel({
               loading={assign.isPending}
               disabled={!selected.length}
             >
-              {assign.isPending ? "Asignando…" : "Asignar seleccionados"}
+              {assign.isPending ? t("exams.assigning") : t("exams.assignSelected")}
             </Button>
             <Button
               type="button"
@@ -608,12 +623,12 @@ function AssignPanel({
               onClick={() => assign.mutate({ all_members: true })}
               loading={assign.isPending}
             >
-              {assign.isPending ? "Asignando…" : "Asignar a todos"}
+              {assign.isPending ? t("exams.assigning") : t("exams.assignAll")}
             </Button>
           </div>
             </div>
           ) : team.data && !available.length ? (
-            <p className="mt-3 text-sm text-muted-foreground">Todos los miembros ya están asignados.</p>
+            <p className="mt-3 text-sm text-muted-foreground">{t("exams.allAssigned")}</p>
           ) : null}
         </>
       )}

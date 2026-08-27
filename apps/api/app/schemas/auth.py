@@ -29,12 +29,25 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=2, max_length=200)
     invite_token: str | None = None
+    locale: str = Field(default="es", pattern="^(es|en)$")
 
 
 class LoginRequest(BaseModel):
     email: AppEmail
     password: str
     invite_token: str | None = None
+
+
+class RecoveryRequest(BaseModel):
+    email: AppEmail
+
+
+class ResetPasswordRequest(BaseModel):
+    password: str = Field(min_length=8, max_length=128)
+
+
+class RecoveryPreview(BaseModel):
+    valid: bool = True
 
 
 class TokenResponse(BaseModel):
@@ -73,3 +86,7 @@ class AuthResponse(BaseModel):
     token_type: str = "bearer"
     user: UserRead
     organization_id: UUID
+
+
+class UserUpdate(BaseModel):
+    locale: str = Field(pattern="^(es|en)$")

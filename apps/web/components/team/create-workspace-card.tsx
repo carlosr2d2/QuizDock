@@ -8,10 +8,12 @@ import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
+import { useT } from "@/lib/i18n/provider";
 import { getToken, setSession } from "@/lib/session";
 import type { Organization, User } from "@/types/api";
 
 export function CreateWorkspaceCard({ redirectTo = "/team/members" }: { redirectTo?: string }) {
+  const t = useT();
   const [error, setError] = useState<string | null>(null);
   const createOrg = useMutation({
     mutationFn: (name: string) =>
@@ -35,17 +37,15 @@ export function CreateWorkspaceCard({ redirectTo = "/team/members" }: { redirect
 
   return (
     <Card>
-      <CardTitle>Nuevo equipo</CardTitle>
-      <CardDescription>
-        Crea un workspace compartido. Cada equipo tiene sus propios documentos y créditos.
-      </CardDescription>
+      <CardTitle>{t("team.newTeam")}</CardTitle>
+      <CardDescription>{t("team.newTeamBody")}</CardDescription>
       <form onSubmit={onCreate} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="min-w-0 flex-1 space-y-2">
-          <Label htmlFor="team-name">Nombre</Label>
+          <Label htmlFor="team-name">{t("common.name")}</Label>
           <Input id="team-name" name="name" required minLength={2} placeholder="Academia Norte" />
         </div>
         <Button type="submit" loading={createOrg.isPending}>
-          {createOrg.isPending ? "Creando…" : "Crear equipo"}
+          {createOrg.isPending ? t("team.creating") : t("team.createTeam")}
         </Button>
       </form>
       {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}

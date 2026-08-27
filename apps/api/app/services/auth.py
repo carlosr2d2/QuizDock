@@ -1,15 +1,27 @@
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
+import logging
+import secrets
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.security import create_access_token, hash_password, hash_reset_token, verify_password
 from app.core.text import slugify
 from app.models import CreditTransaction, Membership, MembershipRole, Organization, PlanTier, User
-from app.repositories.identity import MembershipRepository, OrganizationRepository, UserRepository
+from app.models.identity import PasswordResetToken
+from app.models.mixins import utcnow
+from app.repositories.identity import (
+    MembershipRepository,
+    OrganizationRepository,
+    PasswordResetRepository,
+    UserRepository,
+)
+from app.services.mail import MailError, Mailer, build_recovery_email, get_mailer, recovery_url
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 class AuthError(Exception):
@@ -27,20 +39,32 @@ class AuthResult:
 
 
 class AuthService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, mailer: Mailer | None = None) -> None:
         self.session = session
         self.users = UserRepository(session)
         self.orgs = OrganizationRepository(session)
         self.memberships = MembershipRepository(session)
+        self.resets = PasswordResetRepository(session)
+        self.mailer = mailer if mailer is not None else get_mailer()
 
     async def register(
-        self, email: str, password: str, full_name: str, invite_token: str | None = None
+        self,
+        email: str,
+        password: str,
+        full_name: str,
+        invite_token: str | None = None,
+        locale: str = "es",
     ) -> AuthResult:
         normalized = email.lower()
         if await self.users.get_by_email(normalized):
             raise AuthError("Email already registered", 409)
 
-        user = User(email=normalized, hashed_password=hash_password(password), full_name=full_name)
+        user = User(
+            email=normalized,
+            hashed_password=hash_password(password),
+            full_name=full_name,
+            locale="en" if locale == "en" else "es",
+        )
         await self.users.add(user)
 
         slug = await self._unique_slug(slugify(full_name) or normalized.split("@")[0])
@@ -86,6 +110,71 @@ class AuthService:
         hydrated = await self.users.get_by_id(user.id)
         assert hydrated is not None
         return await self._finish_auth(hydrated, invite_token)
+
+    async def request_recovery(self, email: str) -> None:
+        user = await self.users.get_by_email(email.lower())
+        if user is None or not user.is_active:
+            return
+
+        await self.resets.expire_unused_for_user(user.id)
+        raw = secrets.token_urlsafe(32)
+        reset = PasswordResetToken(
+            user_id=user.id,
+            token_hash=hash_reset_token(raw),
+            expires_at=utcnow() + timedelta(minutes=settings.password_reset_expire_minutes),
+        )
+        await self.resets.add(reset)
+        await self.session.commit()
+
+        url = recovery_url(raw)
+        message = build_recovery_email(
+            to=user.email,
+            reset_url=url,
+            expires_minutes=settings.password_reset_expire_minutes,
+            locale=user.locale,
+        )
+        if not self.mailer.configured:
+            logger.info("Password reset for %s (SMTP not configured): %s", user.email, url)
+            return
+        try:
+            self.mailer.send(message)
+        except MailError:
+            logger.exception("Failed to send password reset to %s", user.email)
+
+    async def assert_recovery_token(self, token: str) -> PasswordResetToken:
+        reset = await self.resets.get_by_hash(hash_reset_token(token))
+        if reset is None or reset.used_at is not None:
+            raise AuthError("El enlace no es válido o caducó.", 400)
+        expires = reset.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires <= datetime.now(timezone.utc):
+            raise AuthError("El enlace no es válido o caducó.", 400)
+        user = await self.users.get_by_id(reset.user_id)
+        if user is None or not user.is_active:
+            raise AuthError("El enlace no es válido o caducó.", 400)
+        return reset
+
+    async def reset_password(self, token: str, password: str) -> AuthResult:
+        reset = await self.assert_recovery_token(token)
+        user = await self.users.get_by_id(reset.user_id)
+        assert user is not None
+        user.hashed_password = hash_password(password)
+        reset.used_at = utcnow()
+        await self.resets.expire_unused_for_user(user.id, except_id=reset.id)
+        await self.session.commit()
+        hydrated = await self.users.get_by_id(user.id)
+        assert hydrated is not None
+        return await self._finish_auth(hydrated, None)
+
+    async def update_locale(self, user: User, locale: str) -> User:
+        resolved = "en" if locale == "en" else "es"
+        persisted = await self.users.get_by_id(user.id)
+        if persisted is None:
+            raise AuthError("User not found", 404)
+        persisted.locale = resolved
+        await self.session.commit()
+        return persisted
 
     async def _finish_auth(self, user: User, invite_token: str | None) -> AuthResult:
         from app.services.team import TeamService

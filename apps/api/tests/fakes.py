@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from app.models import Invitation, Membership, MembershipRole, Organization, PlanTier, User
+from app.models import Invitation, Membership, MembershipRole, Organization, PasswordResetToken, PlanTier, User
 from app.models.document import Document, DocumentStatus
 from app.models.exam import Exam, ExamAssignment, ExamKind, ExamStatus, Question
 from app.models.identity import InvitationStatus
@@ -249,6 +249,25 @@ class FakeMailer:
         self.sent.append(message)
 
 
+class FakePasswordResetRepo:
+    def __init__(self) -> None:
+        self.items: list[PasswordResetToken] = []
+
+    async def add(self, token: PasswordResetToken) -> PasswordResetToken:
+        ensure_id(token)
+        self.items.append(token)
+        return token
+
+    async def get_by_hash(self, token_hash: str) -> PasswordResetToken | None:
+        return next((item for item in self.items if item.token_hash == token_hash), None)
+
+    async def expire_unused_for_user(self, user_id: UUID, except_id: UUID | None = None) -> None:
+        stamp = now()
+        for item in self.items:
+            if item.user_id == user_id and item.used_at is None and item.id != except_id:
+                item.used_at = stamp
+
+
 class FakeTxRepo:
     def __init__(self) -> None:
         self.items: list[object] = []
@@ -399,6 +418,109 @@ class FakeExamRepo:
         for item in attempts[:limit]:
             exam = next((row for row in self.exams if row.id == item.exam_id), None)
             rows.append((item, exam.title if exam else "Examen"))
+        return rows
+
+    async def org_progress_aggregates(
+        self, organization_id: UUID
+    ) -> tuple[int, int, float | None, float | None]:
+        attempts = [
+            item
+            for item in self.attempts
+            if getattr(item, "organization_id", None) == organization_id
+            and getattr(item, "completed_at", None) is not None
+        ]
+        if not attempts:
+            return 0, 0, None, None
+        scores = [float(item.score) for item in attempts if getattr(item, "score", None) is not None]
+        exam_ids = {item.exam_id for item in attempts}
+        average = sum(scores) / len(scores) if scores else None
+        best = max(scores) if scores else None
+        return len(attempts), len(exam_ids), average, best
+
+    async def progress_by_user(
+        self, organization_id: UUID
+    ) -> dict[UUID, tuple[int, int, float | None]]:
+        grouped: dict[UUID, list] = {}
+        for item in self.attempts:
+            if (
+                getattr(item, "organization_id", None) != organization_id
+                or getattr(item, "completed_at", None) is None
+            ):
+                continue
+            grouped.setdefault(item.user_id, []).append(item)
+        out: dict[UUID, tuple[int, int, float | None]] = {}
+        for user_id, items in grouped.items():
+            scores = [float(row.score) for row in items if getattr(row, "score", None) is not None]
+            out[user_id] = (
+                len(items),
+                len({row.exam_id for row in items}),
+                sum(scores) / len(scores) if scores else None,
+            )
+        return out
+
+    def _assignment_completed(self, item: ExamAssignment) -> bool:
+        status = item.status.value if hasattr(item.status, "value") else str(item.status)
+        return status.rsplit(".", 1)[-1].lower() == "completed"
+
+    async def org_assignment_totals(self, organization_id: UUID) -> tuple[int, int]:
+        rows = [item for item in self.assignments if item.organization_id == organization_id]
+        completed = sum(1 for item in rows if self._assignment_completed(item))
+        return len(rows), completed
+
+    async def assignment_totals_by_user(self, organization_id: UUID) -> dict[UUID, tuple[int, int]]:
+        out: dict[UUID, tuple[int, int]] = {}
+        for item in self.assignments:
+            if item.organization_id != organization_id:
+                continue
+            total, pending = out.get(item.user_id, (0, 0))
+            total += 1
+            if not self._assignment_completed(item):
+                pending += 1
+            out[item.user_id] = (total, pending)
+        return out
+
+    async def assigned_exam_counts(
+        self, organization_id: UUID
+    ) -> list[tuple[UUID, str, int, int]]:
+        by_exam: dict[UUID, tuple[str, int, int]] = {}
+        for item in self.assignments:
+            if item.organization_id != organization_id:
+                continue
+            exam = next((row for row in self.exams if row.id == item.exam_id), None)
+            title, total, done = by_exam.get(item.exam_id, (exam.title if exam else "Examen", 0, 0))
+            total += 1
+            if self._assignment_completed(item):
+                done += 1
+            by_exam[item.exam_id] = (title, total, done)
+        return [(exam_id, title, total, done) for exam_id, (title, total, done) in by_exam.items()]
+
+    async def exam_score_averages(self, organization_id: UUID) -> dict[UUID, float]:
+        grouped: dict[UUID, list[float]] = {}
+        for item in self.attempts:
+            if (
+                getattr(item, "organization_id", None) != organization_id
+                or getattr(item, "completed_at", None) is None
+                or getattr(item, "score", None) is None
+            ):
+                continue
+            grouped.setdefault(item.exam_id, []).append(float(item.score))
+        return {exam_id: sum(scores) / len(scores) for exam_id, scores in grouped.items()}
+
+    async def recent_attempts_for_org(
+        self, organization_id: UUID, limit: int = 12
+    ) -> list[tuple[object, str, str]]:
+        attempts = [
+            item
+            for item in self.attempts
+            if getattr(item, "organization_id", None) == organization_id
+            and getattr(item, "completed_at", None) is not None
+        ]
+        attempts.sort(key=lambda item: item.completed_at, reverse=True)
+        rows: list[tuple[object, str, str]] = []
+        for item in attempts[:limit]:
+            exam = next((row for row in self.exams if row.id == item.exam_id), None)
+            person = self.people.get(item.user_id)
+            rows.append((item, exam.title if exam else "Examen", person.full_name if person else ""))
         return rows
 
     async def users_by_ids(self, ids: set[UUID]) -> dict[UUID, User]:

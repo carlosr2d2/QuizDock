@@ -243,6 +243,51 @@ class MemberProgressRead(BaseModel):
     assignments: list[MemberAssignmentProgress] = []
 
 
+class TeamMemberAnalytics(BaseModel):
+    user_id: UUID
+    full_name: str
+    email: str
+    role: str
+    attempt_count: int
+    exams_taken: int
+    average_score: float | None
+    assigned_count: int
+    assigned_pending_count: int
+
+
+class TeamExamAnalytics(BaseModel):
+    exam_id: UUID
+    title: str
+    assigned_count: int
+    completed_count: int
+    average_score: float | None
+
+
+class TeamRecentAttempt(BaseModel):
+    id: UUID
+    exam_id: UUID
+    exam_title: str
+    user_id: UUID
+    full_name: str
+    score: float
+    completed_at: datetime
+
+
+class TeamAnalyticsRead(BaseModel):
+    member_count: int
+    attempt_count: int
+    exams_taken: int
+    assigned_count: int
+    completed_count: int
+    pending_count: int
+    completion_rate: float | None
+    average_score: float | None
+    best_score: float | None
+    members: list[TeamMemberAnalytics] = []
+    exams: list[TeamExamAnalytics] = []
+    recent: list[TeamRecentAttempt] = []
+
+
 class FlashcardCreate(BaseModel):
     front: str
     back: str

@@ -10,8 +10,10 @@ from app.services.mail import (
     OutboundEmail,
     SmtpMailer,
     build_invite_email,
+    build_recovery_email,
     get_mailer,
     invite_accept_url,
+    recovery_url,
 )
 
 
@@ -36,6 +38,51 @@ def test_build_invite_email_includes_org_role_and_link():
 
 def test_invite_accept_url_strips_trailing_slash():
     assert invite_accept_url("tok", "http://localhost:3000/") == "http://localhost:3000/invite/tok"
+
+
+def test_recovery_url_and_email_include_reset_link():
+    assert recovery_url("abc", "http://localhost:3000/") == "http://localhost:3000/recovery/abc"
+    message = build_recovery_email(
+        to="demo@example.com",
+        reset_url="http://localhost:3000/recovery/abc",
+        expires_minutes=60,
+    )
+    assert message.to == "demo@example.com"
+    assert "contraseña" in message.subject
+    assert "http://localhost:3000/recovery/abc" in message.text
+    assert "una hora" in message.text
+    assert 'href="http://localhost:3000/recovery/abc"' in message.html
+
+
+def test_build_invite_email_english_uses_inviter_locale():
+    expires = datetime(2026, 9, 9, tzinfo=timezone.utc)
+    message = build_invite_email(
+        to="ana@acme.com",
+        organization_name="Acme",
+        inviter_name="Luis",
+        role=MembershipRole.MEMBER,
+        accept_url="http://localhost:3000/invite/abc",
+        expires_at=expires,
+        locale="en",
+    )
+    assert "You're invited to Acme" in message.subject
+    assert "as member" in message.text
+    assert "Accept invitation" in message.html
+    assert 'lang="en"' in message.html
+    assert "Sep 09, 2026" in message.text
+
+
+def test_build_recovery_email_english():
+    message = build_recovery_email(
+        to="demo@example.com",
+        reset_url="http://localhost:3000/recovery/abc",
+        expires_minutes=60,
+        locale="en",
+    )
+    assert "Reset your QuizDock password" == message.subject
+    assert "one hour" in message.text
+    assert "Choose a new password" in message.html
+    assert 'lang="en"' in message.html
 
 
 def test_get_mailer_logs_when_host_is_empty():

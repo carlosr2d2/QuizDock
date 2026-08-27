@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
+import { useT } from "@/lib/i18n/provider";
 import type { TeamGroup, TeamMember } from "@/types/api";
 
 export function GroupsCard({
@@ -19,6 +20,7 @@ export function GroupsCard({
   members: TeamMember[];
   canManage: boolean;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(groups[0]?.id ?? null);
@@ -67,11 +69,11 @@ export function GroupsCard({
       {canManage ? (
         <form onSubmit={onCreate} className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="min-w-0 flex-1 space-y-2">
-            <Label htmlFor="group-name">Nombre</Label>
-            <Input id="group-name" name="name" required minLength={2} placeholder="Turno mañana" />
+            <Label htmlFor="group-name">{t("common.name")}</Label>
+            <Input id="group-name" name="name" required minLength={2} placeholder={t("team.groupPlaceholder")} />
           </div>
           <Button type="submit" loading={create.isPending}>
-            {create.isPending ? "Creando…" : "Crear grupo"}
+            {create.isPending ? t("team.creating") : t("team.createGroup")}
           </Button>
         </form>
       ) : null}
@@ -89,7 +91,7 @@ export function GroupsCard({
                 >
                   <p className="truncate text-sm font-medium">{group.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {group.member_count} {group.member_count === 1 ? "integrante" : "integrantes"}
+                    {group.member_count} {group.member_count === 1 ? t("exams.memberOne") : t("exams.memberOther")}
                   </p>
                 </button>
                 {canManage ? (
@@ -99,7 +101,7 @@ export function GroupsCard({
                     onClick={() => remove.mutate(group.id)}
                     loading={remove.isPending && remove.variables === group.id}
                   >
-                    Eliminar
+                    {t("team.delete")}
                   </Button>
                 ) : null}
               </div>
@@ -118,9 +120,7 @@ export function GroupsCard({
         </ul>
       ) : (
         <p className="mt-4 text-sm text-muted-foreground">
-          {canManage
-            ? "Crea un grupo para asignar un examen a varios integrantes a la vez."
-            : "Todavía no hay grupos en este workspace."}
+          {canManage ? t("team.groupHint") : t("team.noGroups")}
         </p>
       )}
     </Card>
@@ -140,6 +140,7 @@ function GroupMembersEditor({
   saving: boolean;
   onSave: (userIds: string[]) => void;
 }) {
+  const t = useT();
   const [selected, setSelected] = useState<string[]>(() => group.members.map((item) => item.user_id));
   const selectedSet = new Set(selected);
 
@@ -160,7 +161,7 @@ function GroupMembersEditor({
             </li>
           ))
         ) : (
-          <li className="text-sm text-muted-foreground">Sin integrantes.</li>
+          <li className="text-sm text-muted-foreground">{t("exams.emptyGroup")}.</li>
         )}
       </ul>
     );
@@ -186,7 +187,7 @@ function GroupMembersEditor({
         ))}
       </ul>
       <Button size="sm" type="button" loading={saving} onClick={() => onSave(selected)}>
-        {saving ? "Guardando…" : "Guardar integrantes"}
+        {saving ? t("auth.saving") : t("team.saveMembers")}
       </Button>
     </div>
   );

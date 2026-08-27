@@ -13,39 +13,26 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { LocaleSwitcher } from "@/components/layout/locale-switcher";
 import { Logo } from "@/components/layout/logo";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { ApiError, apiFetch } from "@/lib/api";
 import { Loader, Skeleton, Spinner } from "@/components/ui/loader";
+import { useSyncUserLocale, useT } from "@/lib/i18n/provider";
 import { redirectToLogin, getOrgId, switchOrganization } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import type { User } from "@/types/api";
 
-const nav = [
-  { href: "/overview", label: "Resumen", icon: LayoutDashboard },
-  { href: "/documents", label: "Documentos", icon: FileText },
-  { href: "/exams", label: "Exámenes", icon: BookOpen },
-  { href: "/flashcards", label: "Flashcards", icon: Layers },
-  {
-    href: "/team/members",
-    label: "Equipo",
-    icon: Users,
-    children: [
-      { href: "/team/members", label: "Miembros" },
-      { href: "/team/groups", label: "Grupos" },
-      { href: "/team/invite", label: "Invitar" },
-    ],
-  },
-];
-
 export function Sidebar() {
+  const t = useT();
   const pathname = usePathname();
   const me = useQuery({
     queryKey: ["me"],
     queryFn: () => apiFetch<User>("/api/v1/auth/me"),
     refetchOnMount: "always",
   });
+  useSyncUserLocale(me.data);
 
   const [orgId, setOrgId] = useState<string | null>(null);
 
@@ -63,19 +50,50 @@ export function Sidebar() {
     await redirectToLogin("/login");
   }
 
+  const selectedOrgId =
+    orgId ?? me.data?.personal_organization_id ?? me.data?.memberships[0]?.organization_id ?? null;
+  const currentOrg = me.data?.memberships.find((item) => item.organization_id === selectedOrgId)?.organization;
+  const isPersonal = currentOrg?.is_personal !== false;
+  const canCreateTeam =
+    Boolean(me.data) &&
+    isPersonal &&
+    !(me.data?.memberships.some((item) => !item.organization.is_personal) ?? false);
+
+  const nav = [
+    { href: "/overview", label: t("nav.overview"), icon: LayoutDashboard },
+    { href: "/documents", label: t("nav.documents"), icon: FileText },
+    { href: "/exams", label: t("nav.exams"), icon: BookOpen },
+    { href: "/flashcards", label: t("nav.flashcards"), icon: Layers },
+    ...(isPersonal
+      ? []
+      : [
+          {
+            href: "/team/members",
+            label: t("nav.team"),
+            icon: Users,
+            children: [
+              { href: "/team/members", label: t("nav.members") },
+              { href: "/team/analytics", label: t("nav.analytics") },
+              { href: "/team/groups", label: t("nav.groups") },
+              { href: "/team/invite", label: t("nav.invite") },
+            ],
+          },
+        ]),
+  ];
+
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="px-5 py-5">
         <Logo inverted />
         {me.isLoading ? (
-          <Loader label="Cargando workspace…" className="mt-4 text-sidebar-muted" />
+          <Loader label={t("common.loadingWorkspace")} className="mt-4 text-sidebar-muted" />
         ) : me.data?.memberships.length ? (
           <label className="mt-4 block">
             <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-sidebar-muted">
-              Workspace
+              {t("common.workspace")}
             </span>
             <select
-              aria-label="Workspace"
+              aria-label={t("common.workspace")}
               className="h-9 w-full rounded-md border border-sidebar-border bg-sidebar-hover px-2 text-xs text-sidebar-foreground"
               value={orgId ?? me.data.personal_organization_id ?? me.data.memberships[0].organization_id}
               onChange={(event) => switchOrganization(event.target.value)}
@@ -83,18 +101,22 @@ export function Sidebar() {
               {me.data.memberships.map((membership) => (
                 <option key={membership.organization_id} value={membership.organization_id}>
                   {membership.organization.name}
-                  {membership.organization.is_personal ? " (personal)" : " (empresa)"}
+                  {membership.organization.is_personal
+                    ? ` (${t("common.personal")})`
+                    : ` (${t("common.company")})`}
                 </option>
               ))}
             </select>
           </label>
         ) : null}
-        <Link
-          href="/team/invite"
-          className="mt-2 block text-xs text-sidebar-muted hover:text-sidebar-foreground hover:underline"
-        >
-          {me.data && me.data.memberships.length < 2 ? "Crear equipo e invitar →" : "Invitar al equipo →"}
-        </Link>
+        {canCreateTeam ? (
+          <Link
+            href="/team/invite"
+            className="mt-2 block text-xs text-sidebar-muted hover:text-sidebar-foreground hover:underline"
+          >
+            {t("nav.createTeam")}
+          </Link>
+        ) : null}
       </div>
       <nav className="flex flex-1 flex-col gap-1 px-3">
         {nav.map((item) => {
@@ -148,10 +170,10 @@ export function Sidebar() {
               {me.isLoading ? (
                 <>
                   <Spinner className="h-3.5 w-3.5 shrink-0 text-sidebar-muted" />
-                  Cargando…
+                  {t("nav.loadingName")}
                 </>
               ) : (
-                (me.data?.full_name ?? "Usuario")
+                (me.data?.full_name ?? t("common.user"))
               )}
             </p>
             {me.isLoading ? (
@@ -160,7 +182,10 @@ export function Sidebar() {
               <p className="truncate text-xs text-sidebar-muted">{me.data?.email}</p>
             )}
           </div>
-          <ThemeToggle className="text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground" />
+          <div className="flex shrink-0 items-center gap-1">
+            <LocaleSwitcher className="border-sidebar-border" />
+            <ThemeToggle className="text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-foreground" />
+          </div>
         </div>
         <Button
           variant="ghost"
@@ -169,7 +194,7 @@ export function Sidebar() {
           onClick={logout}
         >
           <LogOut className="h-4 w-4" />
-          Cerrar sesión
+          {t("nav.logout")}
         </Button>
       </div>
     </aside>

@@ -1,6 +1,8 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+import { DEFAULT_LOCALE, localeTag, type Locale } from "@/lib/i18n/config";
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -11,12 +13,12 @@ export function formatScore(score: number | null | undefined): string {
   return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}%`;
 }
 
-export function formatDate(value: string | Date): string {
+export function formatDate(value: string | Date, locale: Locale = DEFAULT_LOCALE): string {
   const date = typeof value === "string" ? new Date(value) : value;
-  return date.toLocaleDateString("es", { dateStyle: "medium" });
+  return date.toLocaleDateString(localeTag(locale), { dateStyle: "medium" });
 }
 
-export function formatDateTime(value: string | Date): string {
+export function formatDateTime(value: string | Date, locale: Locale = DEFAULT_LOCALE): string {
   const date = typeof value === "string" ? new Date(value) : value;
-  return date.toLocaleString("es", { dateStyle: "medium", timeStyle: "short" });
+  return date.toLocaleString(localeTag(locale), { dateStyle: "medium", timeStyle: "short" });
 }

@@ -57,6 +57,7 @@ async def test_register_creates_personal_workspace_with_signup_bonus(skip_invite
     result = await service.register("Demo@Example.com", "demo12345", "Ana Gomez")
 
     assert result.user.email == "demo@example.com"
+    assert result.user.locale == "es"
     assert verify_password("demo12345", result.user.hashed_password)
     org = await service.orgs.get(result.organization_id)
     assert org is not None
@@ -117,3 +118,21 @@ async def test_login_rejects_disabled_account(skip_invites):
     with pytest.raises(AuthError) as caught:
         await service.login("demo@example.com", "demo12345")
     assert caught.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_register_stores_en_locale(skip_invites):
+    service = _auth_service()
+    result = await service.register("ana@example.com", "demo12345", "Ana Gomez", None, "en")
+    assert result.user.locale == "en"
+
+
+@pytest.mark.asyncio
+async def test_update_locale_persists_choice():
+    service = _auth_service()
+    user = make_user()
+    user.locale = "es"
+    await service.users.add(user)
+    updated = await service.update_locale(user, "en")
+    assert updated.locale == "en"
+    assert service.session.commits == 1

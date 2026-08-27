@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { fetchCover } from "@/lib/api";
+import { useT } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
 type DocumentCoverProps = {
@@ -13,7 +14,7 @@ type DocumentCoverProps = {
   className?: string;
 };
 
-export function documentKindLabel(kind?: string | null): string {
+export function documentKindLabel(kind: string | null | undefined, fileLabel: string): string {
   switch (kind) {
     case "pdf":
       return "PDF";
@@ -25,7 +26,7 @@ export function documentKindLabel(kind?: string | null): string {
     case "doc":
       return "Word";
     default:
-      return "Archivo";
+      return fileLabel;
   }
 }
 
@@ -36,6 +37,7 @@ export function DocumentCover({
   title,
   className,
 }: DocumentCoverProps) {
+  const t = useT();
   const [src, setSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(documentId));
 
@@ -76,7 +78,7 @@ export function DocumentCover({
     return (
       <img
         src={src}
-        alt={title ? `Portada de ${title}` : "Portada del documento"}
+        alt={title ? t("documents.coverOf", { title }) : t("documents.cover")}
         className={cn(
           "h-[5.5rem] w-[4.1rem] shrink-0 rounded-md object-cover shadow-sm ring-1 ring-border",
           className,
@@ -85,7 +87,7 @@ export function DocumentCover({
     );
   }
 
-  const label = documentKindLabel(kind);
+  const label = documentKindLabel(kind, t("documents.file"));
   return (
     <div
       className={cn(
@@ -95,7 +97,7 @@ export function DocumentCover({
         loading && "animate-pulse",
         className,
       )}
-      aria-label={loading ? "Cargando portada" : `Documento ${label}`}
+      aria-label={loading ? t("documents.loadingCover") : t("documents.documentKind", { label })}
       aria-busy={loading || undefined}
     >
       <span className="absolute inset-x-0 top-0 h-0.5 bg-accent" />

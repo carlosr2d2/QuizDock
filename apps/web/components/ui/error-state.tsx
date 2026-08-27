@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { errorDetail, errorMessage, reportClientError } from "@/lib/api";
+import { useT } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
 export function ErrorState({
@@ -17,6 +18,7 @@ export function ErrorState({
   onRetry?: () => void;
   className?: string;
 }) {
+  const t = useT();
   const [report, setReport] = useState<"idle" | "sending" | "sent" | "copied" | "failed">("idle");
   const message = errorMessage(error);
   const detail = errorDetail(error);
@@ -44,14 +46,14 @@ export function ErrorState({
 
   const reportLabel =
     report === "sending"
-      ? "Enviando…"
+      ? t("error.sending")
       : report === "sent"
-        ? "Informe enviado"
+        ? t("error.sent")
         : report === "copied"
-          ? "Copiado al portapapeles"
+          ? t("error.copied")
           : report === "failed"
-            ? "No se pudo enviar"
-            : "Enviar al equipo técnico";
+            ? t("error.failed")
+            : t("error.send");
 
   return (
     <div
@@ -61,13 +63,13 @@ export function ErrorState({
         className,
       )}
     >
-      <p className="text-xs font-medium uppercase tracking-wide text-destructive">Error</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-destructive">{t("common.error")}</p>
       <h3 className="mt-2 text-base font-semibold tracking-tight">{title}</h3>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{message}</p>
       <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
         {onRetry ? (
           <Button type="button" onClick={onRetry}>
-            Reintentar
+            {t("common.retry")}
           </Button>
         ) : null}
         <Button
@@ -82,7 +84,7 @@ export function ErrorState({
       </div>
       {report === "copied" ? (
         <p className="mt-3 text-xs text-muted-foreground">
-          No se alcanzó el servidor. Se copió el informe para pegarlo al equipo técnico.
+          {t("error.copiedHint")}
         </p>
       ) : null}
     </div>

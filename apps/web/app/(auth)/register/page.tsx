@@ -10,18 +10,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader, PageLoader } from "@/components/ui/loader";
 import { apiFetch } from "@/lib/api";
+import { LOCALE_STORAGE_KEY, parseLocale } from "@/lib/i18n/config";
+import { syncLocaleFromUser, useT } from "@/lib/i18n/provider";
 import { authWorkspaceId, setSession } from "@/lib/session";
 import type { AuthResponse, InvitationPublic } from "@/types/api";
 
 export default function RegisterPage() {
+  const t = useT();
   return (
-    <Suspense fallback={<PageLoader label="Cargando…" />}>
+    <Suspense fallback={<PageLoader label={t("common.loading")} />}>
       <RegisterForm />
     </Suspense>
   );
 }
 
 function RegisterForm() {
+  const t = useT();
   const searchParams = useSearchParams();
   const inviteToken = searchParams.get("invite");
   const [error, setError] = useState<string | null>(null);
@@ -47,14 +51,16 @@ function RegisterForm() {
           email: form.get("email"),
           password: form.get("password"),
           invite_token: inviteToken,
+          locale: parseLocale(localStorage.getItem(LOCALE_STORAGE_KEY)),
         },
       });
       const orgId = authWorkspaceId(result.user, result.organization_id);
-      if (!orgId) throw new Error("No se pudo crear el workspace");
+      if (!orgId) throw new Error(t("auth.noWorkspace"));
+      syncLocaleFromUser(result.user);
       await setSession(result.access_token, orgId, JSON.stringify(result.user));
       window.location.assign("/overview");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear la cuenta");
+      setError(err instanceof Error ? err.message : t("auth.registerError"));
       setPending(false);
     }
   }
@@ -62,23 +68,23 @@ function RegisterForm() {
   return (
     <form onSubmit={onSubmit} className="w-full max-w-sm space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Crear cuenta</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("auth.registerTitle")}</h1>
         {inviteToken && invite.isLoading ? (
-          <Loader label="Cargando invitación…" className="mt-1" />
+          <Loader label={t("auth.loadingInvite")} className="mt-1" />
         ) : (
           <p className="mt-1 text-sm text-muted-foreground">
             {invite.data
-              ? `Te invitaron a ${invite.data.organization_name}. Se crea también tu workspace personal.`
-              : "Incluye un workspace personal con créditos de bienvenida."}
+              ? t("auth.registerInvite", { org: invite.data.organization_name })
+              : t("auth.registerBody")}
           </p>
         )}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="full_name">Nombre</Label>
+        <Label htmlFor="full_name">{t("common.name")}</Label>
         <Input id="full_name" name="full_name" required autoComplete="name" />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="email">Correo</Label>
+        <Label htmlFor="email">{t("common.email")}</Label>
         <Input
           id="email"
           name="email"
@@ -91,7 +97,7 @@ function RegisterForm() {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Contraseña</Label>
+        <Label htmlFor="password">{t("common.password")}</Label>
         <Input
           id="password"
           name="password"
@@ -103,15 +109,15 @@ function RegisterForm() {
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <Button type="submit" className="w-full" loading={pending}>
-        {pending ? "Creando…" : inviteToken ? "Registrarme y unirme" : "Registrarme"}
+        {pending ? t("auth.creating") : inviteToken ? t("auth.registerJoin") : t("auth.registerSubmit")}
       </Button>
       <p className="text-sm text-muted-foreground">
-        ¿Ya tienes cuenta?{" "}
+        {t("auth.haveAccount")}{" "}
         <Link
           href={inviteToken ? `/login?next=/invite/${inviteToken}` : "/login"}
           className="text-foreground underline-offset-4 hover:underline"
         >
-          Entrar
+          {t("auth.enter")}
         </Link>
       </p>
     </form>

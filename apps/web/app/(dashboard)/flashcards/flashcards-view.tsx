@@ -13,11 +13,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { ListLoader, Loader } from "@/components/ui/loader";
 import { apiFetch } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import { canCreateContent } from "@/lib/permissions";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { Flashcard, FlashcardDeck, GenerationJob, User } from "@/types/api";
 
 export function FlashcardsView() {
+  const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const jobId = searchParams.get("job");
@@ -90,32 +92,37 @@ export function FlashcardsView() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Flashcards</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("flashcards.title")}</h1>
         {decksLoading ? (
-          <Loader label="Cargando mazos…" className="mt-1" />
+          <Loader label={t("flashcards.loadingDecks")} className="mt-1" />
         ) : (
           <p className="mt-1 text-sm text-muted-foreground">
-            Repaso con repetición espaciada (SM-2).
+            {t("flashcards.spaced")}
             {totalCards
-              ? ` ${totalDue} ${totalDue === 1 ? "pendiente" : "pendientes"} · ${totalCards} ${totalCards === 1 ? "tarjeta" : "tarjetas"}`
+              ? ` ${t("flashcards.dueLine", {
+                  due: totalDue,
+                  dueLabel: totalDue === 1 ? t("flashcards.pendingOne") : t("flashcards.pendingOther"),
+                  total: totalCards,
+                  cardLabel: totalCards === 1 ? t("overview.cardOne") : t("overview.cardOther"),
+                })}`
               : canAuthor
-                ? " Genera un mazo desde un documento listo."
-                : " Un administrador genera los mazos; tú repasas las tarjetas."}
+                ? ` ${t("flashcards.authorHint")}`
+                : ` ${t("flashcards.memberHint")}`}
           </p>
         )}
       </div>
 
       {jobId && job.isLoading ? (
-        <Loader label="Consultando generación…" className="justify-center py-2" />
+        <Loader label={t("flashcards.checkingJob")} className="justify-center py-2" />
       ) : generating ? (
-        <Loader label="Generando tarjetas… esta vista se actualiza sola." className="justify-center py-2" />
+        <Loader label={t("flashcards.generating")} className="justify-center py-2" />
       ) : null}
       {job.data?.status === "failed" ? (
-        <p className="text-sm text-destructive">{job.data.error_message ?? "La generación falló."}</p>
+        <p className="text-sm text-destructive">{job.data.error_message ?? t("flashcards.generateFailed")}</p>
       ) : null}
 
       {dueLoading && !current && !generating ? (
-        <Loader label="Cargando tarjetas pendientes…" className="justify-center py-10" />
+        <Loader label={t("flashcards.loadingDue")} className="justify-center py-10" />
       ) : current ? (
         <div className="mx-auto max-w-xl space-y-4">
           {activeDeck || current.document_title ? (
@@ -134,7 +141,7 @@ export function FlashcardsView() {
             )}
           >
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              {flipped ? "Respuesta" : "Pregunta"}
+              {flipped ? t("flashcards.answer") : t("flashcards.question")}
             </p>
             <p className="mt-3 text-base font-medium">{flipped ? current.back : current.front}</p>
           </button>
@@ -146,7 +153,7 @@ export function FlashcardsView() {
                 onClick={() => review.mutate({ cardId: current.id, quality: 1 })}
                 loading={review.isPending}
               >
-                Otra vez
+                {t("flashcards.again")}
               </Button>
               <Button
                 variant="secondary"
@@ -154,34 +161,33 @@ export function FlashcardsView() {
                 onClick={() => review.mutate({ cardId: current.id, quality: 3 })}
                 loading={review.isPending}
               >
-                Bien
+                {t("flashcards.good")}
               </Button>
               <Button size="sm" onClick={() => review.mutate({ cardId: current.id, quality: 5 })} loading={review.isPending}>
-                Fácil
+                {t("flashcards.easy")}
               </Button>
             </div>
           ) : (
             <p className="text-center text-xs text-muted-foreground">
-              {Math.min(index + 1, queue.length)} / {queue.length} pendientes · pulsa la tarjeta para revelar
+              {t("flashcards.tapReveal", {
+                current: Math.min(index + 1, queue.length),
+                total: queue.length,
+              })}
             </p>
           )}
         </div>
       ) : decks.data?.length && !generating ? (
         <p className="text-sm text-muted-foreground">
-          {documentId ? "Este mazo está al día." : "No hay tarjetas pendientes de repaso ahora."}
+          {documentId ? t("flashcards.deckUpToDate") : t("flashcards.noneDue")}
         </p>
       ) : !generating && !decks.isError && !decks.data?.length ? (
         <EmptyState
-          title="No hay tarjetas"
-          description={
-            canAuthor
-              ? "Genera un mazo desde un documento listo. El coste es 1 crédito por tarjeta."
-              : "Cuando un administrador genere un mazo, podrás repasarlo aquí."
-          }
+          title={t("flashcards.emptyTitle")}
+          description={canAuthor ? t("flashcards.emptyAuthor") : t("flashcards.emptyMember")}
         >
           {canAuthor ? (
             <Link href="/documents">
-              <Button variant="outline">Ir a documentos</Button>
+              <Button variant="outline">{t("overview.goDocuments")}</Button>
             </Link>
           ) : null}
         </EmptyState>
@@ -189,12 +195,12 @@ export function FlashcardsView() {
 
       {decks.isError ? (
         <ErrorState
-          title="No se pudieron cargar las flashcards"
+          title={t("flashcards.loadError")}
           error={decks.error}
           onRetry={() => void decks.refetch()}
         />
       ) : decksLoading ? (
-        <ListLoader rows={3} label="Cargando mazos…" />
+        <ListLoader rows={3} label={t("flashcards.loadingDecks")} />
       ) : decks.data && decks.data.length > 0 ? (
         <ul className={surfaceListClass}>
           {decks.data.map((deck) => {
@@ -214,31 +220,38 @@ export function FlashcardsView() {
                     <p className="mt-1 text-xs">
                       {deck.due_count ? (
                         <span className="text-accent">
-                          {deck.due_count} {deck.due_count === 1 ? "pendiente" : "pendientes"} · {deck.card_count}{" "}
-                          {deck.card_count === 1 ? "tarjeta" : "tarjetas"}
+                          {t("flashcards.dueLine", {
+                            due: deck.due_count,
+                            dueLabel: deck.due_count === 1 ? t("flashcards.pendingOne") : t("flashcards.pendingOther"),
+                            total: deck.card_count,
+                            cardLabel: deck.card_count === 1 ? t("overview.cardOne") : t("overview.cardOther"),
+                          })}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">
-                          Al día · {deck.card_count} {deck.card_count === 1 ? "tarjeta" : "tarjetas"}
+                          {t("overview.upToDate", {
+                            total: deck.card_count,
+                            cardLabel: deck.card_count === 1 ? t("overview.cardOne") : t("overview.cardOther"),
+                          })}
                         </span>
                       )}
                       {deck.last_reviewed_at
-                        ? ` · último ${formatDateTime(deck.last_reviewed_at)}`
-                        : " · aún no repasadas"}
+                        ? ` · ${t("flashcards.lastReviewed", { date: formatDateTime(deck.last_reviewed_at, locale) })}`
+                        : ` · ${t("flashcards.notReviewed")}`}
                     </p>
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {deck.due_count ? (
                     <Badge className="border-accent/30 bg-accent/10 text-accent">
-                      {deck.due_count} {deck.due_count === 1 ? "pendiente" : "pendientes"}
+                      {deck.due_count} {deck.due_count === 1 ? t("flashcards.pendingOne") : t("flashcards.pendingOther")}
                     </Badge>
                   ) : (
-                    <Badge>al día</Badge>
+                    <Badge>{t("flashcards.caughtUpBadge")}</Badge>
                   )}
                   <Link href={href}>
                     <Button size="sm" variant={selected && deck.due_count ? "primary" : "outline"}>
-                      {deck.due_count ? "Repasar" : "Ver mazo"}
+                      {deck.due_count ? t("flashcards.reviewDeck") : t("flashcards.viewDeck")}
                     </Button>
                   </Link>
                 </div>

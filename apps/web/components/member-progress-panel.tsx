@@ -11,15 +11,9 @@ import { CardDescription, CardTitle } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { Loader } from "@/components/ui/loader";
 import { apiFetch } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import { formatDateTime, formatScore } from "@/lib/utils";
 import type { MemberProgress, TeamMember } from "@/types/api";
-
-const roleLabel: Record<TeamMember["role"], string> = {
-  owner: "propietario",
-  admin: "admin",
-  member: "miembro",
-  auditor: "auditor",
-};
 
 export function MemberProgressPanel({
   member,
@@ -28,6 +22,7 @@ export function MemberProgressPanel({
   member: TeamMember;
   onClose: () => void;
 }) {
+  const { t, locale } = useI18n();
   const progress = useQuery({
     queryKey: ["member-progress", member.user_id],
     queryFn: () =>
@@ -54,7 +49,7 @@ export function MemberProgressPanel({
       <button
         type="button"
         className="absolute inset-0 bg-foreground/40"
-        aria-label="Cerrar resumen"
+        aria-label={t("team.closeSummary")}
         onClick={onClose}
       />
       <div
@@ -67,18 +62,18 @@ export function MemberProgressPanel({
           <div className="min-w-0">
             <CardTitle id="member-progress-title">{member.full_name}</CardTitle>
             <CardDescription>
-              {member.email} · {roleLabel[member.role]}
+              {member.email} · {t(`role.${member.role}`)}
             </CardDescription>
           </div>
-          <Button type="button" size="sm" variant="ghost" onClick={onClose} aria-label="Cerrar">
+          <Button type="button" size="sm" variant="ghost" onClick={onClose} aria-label={t("common.close")}>
             <X className="h-4 w-4" />
           </Button>
         </div>
         <div className="overflow-y-auto px-5 py-4">
-          {progress.isLoading ? <Loader label="Cargando exámenes…" /> : null}
+          {progress.isLoading ? <Loader label={t("team.loadingExams")} /> : null}
           {progress.isError ? (
             <ErrorState
-              title="No se pudo cargar el resumen"
+              title={t("team.progressError")}
               error={progress.error}
               onRetry={() => void progress.refetch()}
             />
@@ -86,20 +81,20 @@ export function MemberProgressPanel({
           {data ? (
             <div className="space-y-5">
               <div className="grid grid-cols-2 gap-3">
-                <MiniStat title="Hechos" value={data.exams_taken} />
-                <MiniStat title="Promedio" value={formatScore(data.average_score)} />
-                <MiniStat title="Mejor nota" value={formatScore(data.best_score)} />
-                <MiniStat title="Pendientes" value={data.assigned_pending_count} />
+                <MiniStat title={t("team.taken")} value={data.exams_taken} />
+                <MiniStat title={t("team.kpiAverage")} value={formatScore(data.average_score)} />
+                <MiniStat title={t("team.bestScore")} value={formatScore(data.best_score)} />
+                <MiniStat title={t("team.kpiPending")} value={data.assigned_pending_count} />
               </div>
               {data.recent.length ? (
                 <div>
-                  <h3 className="text-sm font-medium">Exámenes tomados</h3>
+                  <h3 className="text-sm font-medium">{t("team.takenExams")}</h3>
                   <ul className="mt-2 space-y-1">
                     {data.recent.map((item) => (
                       <li key={item.id}>
                         <AttemptRow
                           title={item.exam_title}
-                          subtitle={formatDateTime(item.completed_at)}
+                          subtitle={formatDateTime(item.completed_at, locale)}
                           score={item.score}
                           href={`/exams/${item.exam_id}?attempt=${item.id}`}
                         />
@@ -108,13 +103,11 @@ export function MemberProgressPanel({
                   </ul>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  Todavía no ha completado ningún examen en este workspace.
-                </p>
+                <p className="text-sm text-muted-foreground">{t("team.noMemberExams")}</p>
               )}
               {data.assignments.some((item) => item.status !== "completed") ? (
                 <div>
-                  <h3 className="text-sm font-medium">Asignados pendientes</h3>
+                  <h3 className="text-sm font-medium">{t("team.assignedPending")}</h3>
                   <ul className="mt-2 space-y-2">
                     {data.assignments
                       .filter((item) => item.status !== "completed")
@@ -124,7 +117,7 @@ export function MemberProgressPanel({
                           className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-3"
                         >
                           <p className="truncate text-sm font-medium">{item.exam_title}</p>
-                          <Badge>pendiente</Badge>
+                          <Badge>{t("common.pending")}</Badge>
                         </li>
                       ))}
                   </ul>

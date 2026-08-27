@@ -4,29 +4,28 @@ import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
+import { useT } from "@/lib/i18n/provider";
 import { switchOrganization } from "@/lib/session";
-import { roleLabel } from "@/lib/team";
 import type { User } from "@/types/api";
 
 export function PersonalWorkspaceHint({
   user,
-  actionLabel = "Ir al equipo",
+  actionLabel,
 }: {
   user?: User;
   actionLabel?: string;
 }) {
+  const t = useT();
   const companyOrgs = useMemo(
     () => user?.memberships.filter((item) => !item.organization.is_personal) ?? [],
     [user],
   );
+  const label = actionLabel ?? t("team.goTeam");
 
   return (
     <Card>
-      <CardTitle>Estás en el workspace personal</CardTitle>
-      <CardDescription>
-        Invitaciones, grupos y la lista de miembros viven en un equipo de empresa. Cambia de workspace o
-        crea uno nuevo.
-      </CardDescription>
+      <CardTitle>{t("team.personalTitle")}</CardTitle>
+      <CardDescription>{t("team.personalBody")}</CardDescription>
       {companyOrgs.length ? (
         <ul className="mt-4 space-y-2">
           {companyOrgs.map((membership) => (
@@ -36,16 +35,16 @@ export function PersonalWorkspaceHint({
             >
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{membership.organization.name}</p>
-                <p className="text-xs text-muted-foreground">{roleLabel[membership.role]}</p>
+                <p className="text-xs text-muted-foreground">{t(`role.${membership.role}`)}</p>
               </div>
               <Button size="sm" onClick={() => switchOrganization(membership.organization_id)}>
-                {actionLabel}
+                {label}
               </Button>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-4 text-sm text-muted-foreground">Aún no tienes un equipo. Créalo más abajo.</p>
+        <p className="mt-4 text-sm text-muted-foreground">{t("team.noTeamYet")}</p>
       )}
     </Card>
   );

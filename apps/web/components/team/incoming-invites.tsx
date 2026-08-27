@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Loader } from "@/components/ui/loader";
 import { apiFetch } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import { getToken, setSession } from "@/lib/session";
-import { roleLabel } from "@/lib/team";
 import { formatDate } from "@/lib/utils";
 import type { InvitationAccept, MyInvitation, User } from "@/types/api";
 
 export function IncomingInvites({ items, loading }: { items?: MyInvitation[]; loading: boolean }) {
+  const { t, locale } = useI18n();
   const accept = useMutation({
     mutationFn: (token: string) =>
       apiFetch<InvitationAccept>(`/api/v1/invitations/${token}/accept`, { method: "POST" }),
@@ -24,20 +25,23 @@ export function IncomingInvites({ items, loading }: { items?: MyInvitation[]; lo
     },
   });
 
-  if (loading) return <Loader label="Buscando invitaciones…" />;
+  if (loading) return <Loader label={t("team.findingInvites")} />;
   if (!items?.length) return null;
 
   return (
     <Card>
-      <CardTitle>Invitaciones para ti</CardTitle>
-      <CardDescription>Acepta para unirte al workspace. Tus documentos personales no se mezclan.</CardDescription>
+      <CardTitle>{t("team.incomingTitle")}</CardTitle>
+      <CardDescription>{t("team.incomingBody")}</CardDescription>
       <ul className="mt-4 space-y-2">
         {items.map((item) => (
           <li key={item.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-3">
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{item.organization_name}</p>
               <p className="text-xs text-muted-foreground">
-                {roleLabel[item.role]} · caduca {formatDate(item.expires_at)}
+                {t("team.expiresRole", {
+                  role: t(`role.${item.role}`),
+                  date: formatDate(item.expires_at, locale),
+                })}
               </p>
             </div>
             <Button
@@ -45,7 +49,7 @@ export function IncomingInvites({ items, loading }: { items?: MyInvitation[]; lo
               loading={accept.isPending && accept.variables === item.token}
               onClick={() => accept.mutate(item.token)}
             >
-              Aceptar
+              {t("team.accept")}
             </Button>
           </li>
         ))}

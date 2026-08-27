@@ -169,6 +169,51 @@ export type MemberProgress = {
   assignments: MemberAssignmentProgress[];
 };
 
+export type TeamMemberAnalytics = {
+  user_id: string;
+  full_name: string;
+  email: string;
+  role: MembershipRole | string;
+  attempt_count: number;
+  exams_taken: number;
+  average_score: number | null;
+  assigned_count: number;
+  assigned_pending_count: number;
+};
+
+export type TeamExamAnalytics = {
+  exam_id: string;
+  title: string;
+  assigned_count: number;
+  completed_count: number;
+  average_score: number | null;
+};
+
+export type TeamRecentAttempt = {
+  id: string;
+  exam_id: string;
+  exam_title: string;
+  user_id: string;
+  full_name: string;
+  score: number;
+  completed_at: string;
+};
+
+export type TeamAnalytics = {
+  member_count: number;
+  attempt_count: number;
+  exams_taken: number;
+  assigned_count: number;
+  completed_count: number;
+  pending_count: number;
+  completion_rate: number | null;
+  average_score: number | null;
+  best_score: number | null;
+  members: TeamMemberAnalytics[];
+  exams: TeamExamAnalytics[];
+  recent: TeamRecentAttempt[];
+};
+
 export type Progress = {
   attempt_count: number;
   exams_taken: number;

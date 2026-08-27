@@ -41,6 +41,10 @@ from app.schemas.content import (
     ProgressRead,
     QuestionPublic,
     QuestionResult,
+    TeamAnalyticsRead,
+    TeamExamAnalytics,
+    TeamMemberAnalytics,
+    TeamRecentAttempt,
     exam_read,
 )
 from app.services.billing import BillingService
@@ -274,6 +278,88 @@ class ExamService:
             assigned_pending_count=pending,
             recent=snapshot.recent,
             assignments=assignments,
+        )
+
+    async def team_analytics(
+        self, organization_id: UUID, actor_role: MembershipRole
+    ) -> TeamAnalyticsRead:
+        org = await self._org(organization_id)
+        if org.is_personal:
+            raise DomainError("El workspace personal no tiene analíticas de equipo. Crea un equipo.")
+        if not self._can_review_attempts(org, actor_role):
+            raise ForbiddenError("No puedes ver las analíticas del equipo.")
+
+        members = await self.memberships.list_with_users(organization_id)
+        progress = await self.repo.progress_by_user(organization_id)
+        assigned_by_user = await self.repo.assignment_totals_by_user(organization_id)
+        attempt_count, exams_taken, average, best = await self.repo.org_progress_aggregates(
+            organization_id
+        )
+        assigned_count, completed_count = await self.repo.org_assignment_totals(organization_id)
+        pending_count = assigned_count - completed_count
+        completion_rate = (
+            round(completed_count / assigned_count * 100, 1) if assigned_count else None
+        )
+        exam_averages = await self.repo.exam_score_averages(organization_id)
+        exam_rows = [
+            TeamExamAnalytics(
+                exam_id=exam_id,
+                title=title,
+                assigned_count=total,
+                completed_count=done,
+                average_score=round(exam_averages[exam_id], 1) if exam_id in exam_averages else None,
+            )
+            for exam_id, title, total, done in await self.repo.assigned_exam_counts(organization_id)
+        ]
+        exam_rows.sort(
+            key=lambda item: (-(item.assigned_count - item.completed_count), item.title.lower())
+        )
+        member_rows = [
+            TeamMemberAnalytics(
+                user_id=item.user_id,
+                full_name=item.user.full_name,
+                email=item.user.email,
+                role=str(item.role.value if hasattr(item.role, "value") else item.role),
+                attempt_count=progress.get(item.user_id, (0, 0, None))[0],
+                exams_taken=progress.get(item.user_id, (0, 0, None))[1],
+                average_score=(
+                    round(progress[item.user_id][2], 1)
+                    if item.user_id in progress and progress[item.user_id][2] is not None
+                    else None
+                ),
+                assigned_count=assigned_by_user.get(item.user_id, (0, 0))[0],
+                assigned_pending_count=assigned_by_user.get(item.user_id, (0, 0))[1],
+            )
+            for item in members
+        ]
+        member_rows.sort(
+            key=lambda item: (-item.assigned_pending_count, item.full_name.lower())
+        )
+        recent = [
+            TeamRecentAttempt(
+                id=attempt.id,
+                exam_id=attempt.exam_id,
+                exam_title=title,
+                user_id=attempt.user_id,
+                full_name=full_name,
+                score=attempt.score or 0,
+                completed_at=attempt.completed_at or attempt.created_at,
+            )
+            for attempt, title, full_name in await self.repo.recent_attempts_for_org(organization_id)
+        ]
+        return TeamAnalyticsRead(
+            member_count=len(members),
+            attempt_count=attempt_count,
+            exams_taken=exams_taken,
+            assigned_count=assigned_count,
+            completed_count=completed_count,
+            pending_count=pending_count,
+            completion_rate=completion_rate,
+            average_score=round(average, 1) if average is not None else None,
+            best_score=round(best, 1) if best is not None else None,
+            members=member_rows,
+            exams=exam_rows,
+            recent=recent,
         )
 
     async def request_generation(

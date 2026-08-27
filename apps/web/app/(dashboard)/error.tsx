@@ -1,6 +1,7 @@
 "use client";
 
 import { ErrorState } from "@/components/ui/error-state";
+import { useT } from "@/lib/i18n/provider";
 
 export default function DashboardError({
   error,
@@ -9,9 +10,10 @@ export default function DashboardError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useT();
   return (
     <div className="py-8">
-      <ErrorState title="Algo salió mal en esta pantalla" error={error} onRetry={reset} />
+      <ErrorState title={t("error.screen")} error={error} onRetry={reset} />
     </div>
   );
 }

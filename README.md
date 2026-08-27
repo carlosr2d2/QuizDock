@@ -103,6 +103,7 @@ npm run dev
 3. Cuando el estado sea *listo*, generar un **examen** (8 créditos) o **flashcards** (12 créditos). El worker indexa el documento en fragmentos (RAG) y genera **un ítem por fragmento** relevante.
 4. Hacer el cuestionario o repasar tarjetas (SM-2). Si la generación falla, los créditos se reembolsan.
 5. En un workspace de equipo, **Equipo → Invitar** envía el correo. En local los mensajes aparecen en [Mailpit](http://localhost:8025).
+6. **Recuperar acceso** en `/recovery` envía un enlace de una hora. En local, el correo también llega a Mailpit.
 
 Sin `LLM_API_KEY`, el worker usa embeddings locales (hash) y un generador heurístico. Con Gemini, pon en `.env` una clave de [Google AI Studio](https://aistudio.google.com/apikey) (`AQ.` o `AIza`) y:
 

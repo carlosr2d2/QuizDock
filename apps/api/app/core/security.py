@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
+import hashlib
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -18,6 +19,10 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
+
+
+def hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def create_access_token(subject: UUID, extra: dict[str, Any] | None = None) -> str:

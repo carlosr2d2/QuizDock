@@ -9,10 +9,12 @@ import { PersonalWorkspaceHint } from "@/components/team/personal-workspace-hint
 import { ErrorState } from "@/components/ui/error-state";
 import { Loader, PageLoader } from "@/components/ui/loader";
 import { apiFetch } from "@/lib/api";
+import { useT } from "@/lib/i18n/provider";
 import { useTeamPage } from "@/lib/use-team-page";
 import type { MyInvitation } from "@/types/api";
 
 export default function TeamInvitePage() {
+  const t = useT();
   const { me, team, snapshot, isPersonal } = useTeamPage();
   const mine = useQuery({
     queryKey: ["my-invitations"],
@@ -22,29 +24,29 @@ export default function TeamInvitePage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Invitar</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("team.inviteTitle")}</h1>
         {team.isLoading ? (
-          <Loader label="Cargando workspace…" className="mt-1" />
+          <Loader label={t("common.loadingWorkspace")} className="mt-1" />
         ) : (
           <p className="mt-1 text-sm text-muted-foreground">
             {isPersonal
-              ? "Las invitaciones se envían desde un equipo de empresa."
-              : `Invita a ${snapshot?.organization.name ?? "este workspace"} por correo.`}
+              ? t("team.invitePersonal")
+              : t("team.inviteBody", { name: snapshot?.organization.name ?? t("team.thisWorkspace") })}
           </p>
         )}
       </div>
 
-      {team.isLoading ? <PageLoader label="Cargando invitaciones…" /> : null}
+      {team.isLoading ? <PageLoader label={t("team.loadingInvites")} /> : null}
       {team.isError ? (
         <ErrorState
-          title="No se pudo cargar el equipo"
+          title={t("team.loadTeamError")}
           error={team.error}
           onRetry={() => void team.refetch()}
         />
       ) : null}
 
       <IncomingInvites items={mine.data} loading={mine.isLoading} />
-      {isPersonal ? <PersonalWorkspaceHint user={me.data} actionLabel="Ir e invitar" /> : null}
+      {isPersonal ? <PersonalWorkspaceHint user={me.data} actionLabel={t("team.goInvite")} /> : null}
       {!isPersonal && snapshot ? <InviteCard snapshot={snapshot} /> : null}
       <CreateWorkspaceCard redirectTo="/team/invite" />
     </div>

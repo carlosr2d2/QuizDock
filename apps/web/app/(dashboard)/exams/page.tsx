@@ -12,11 +12,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { ListLoader, Loader, ProgressBar } from "@/components/ui/loader";
 import { apiFetch } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import { canCreateContent } from "@/lib/permissions";
 import { formatDateTime, formatScore } from "@/lib/utils";
 import type { Exam, Progress, User } from "@/types/api";
 
 export default function ExamsPage() {
+  const { t, locale } = useI18n();
   const exams = useQuery({
     queryKey: ["exams"],
     queryFn: () => apiFetch<Exam[]>("/api/v1/exams"),
@@ -45,36 +47,36 @@ export default function ExamsPage() {
   const pendingIds = new Set(pendingAssigned.map((exam) => exam.id));
   const catalog = items.filter((exam) => !pendingIds.has(exam.id));
 
+  const hint = exams.data?.some((exam) => exam.can_assign)
+    ? t("exams.assignHint")
+    : exams.data?.some((exam) => exam.assigned_to_me)
+      ? t("exams.assignedHint")
+      : canAuthor
+        ? t("exams.authorHint")
+        : t("exams.memberHint");
+
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Exámenes</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("exams.title")}</h1>
         {exams.isLoading ? (
-          <Loader label="Cargando evaluaciones…" className="mt-1" />
+          <Loader label={t("exams.loading")} className="mt-1" />
         ) : (
-          <p className="mt-1 text-sm text-muted-foreground">
-            {exams.data?.some((exam) => exam.can_assign)
-              ? "Asigna evaluaciones del workspace a los miembros del equipo."
-              : exams.data?.some((exam) => exam.assigned_to_me)
-                ? "Lo que tu empresa te pidió completar, y tu historial."
-                : canAuthor
-                  ? "Evaluaciones generadas a partir de documentos. El worker descuenta créditos y no bloquea la API."
-                  : "Los exámenes los crea un administrador. Aquí ves los que te asignaron y tu historial."}
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">{hint}</p>
         )}
       </div>
 
       {exams.isError ? (
         <ErrorState
-          title="No se pudieron cargar los exámenes"
+          title={t("exams.loadError")}
           error={exams.error}
           onRetry={() => void exams.refetch()}
         />
       ) : exams.isLoading ? (
-        <ListLoader label="Cargando exámenes…" />
+        <ListLoader label={t("exams.loadingList")} />
       ) : pendingAssigned.length ? (
         <div className="space-y-3">
-          <h2 className="text-sm font-medium text-muted-foreground">Pendientes de la empresa</h2>
+          <h2 className="text-sm font-medium text-muted-foreground">{t("exams.companyPending")}</h2>
           <ul className={surfaceListClass}>
             {pendingAssigned.map((exam) => (
               <ExamRow key={exam.id} exam={exam} pending />
@@ -91,31 +93,27 @@ export default function ExamsPage() {
         </ul>
       ) : !exams.isLoading && !exams.isError && !pendingAssigned.length ? (
         <EmptyState
-          title="Sin evaluaciones todavía"
-          description={
-            canAuthor
-              ? "Cuando un documento esté listo, genera un cuestionario desde la lista de documentos."
-              : "Cuando un administrador genere y te asigne un examen, aparecerá aquí."
-          }
+          title={t("exams.emptyTitle")}
+          description={canAuthor ? t("exams.emptyAuthor") : t("exams.emptyMember")}
         >
           {canAuthor ? (
             <Link href="/documents">
-              <Button variant="outline">Ir a documentos</Button>
+              <Button variant="outline">{t("overview.goDocuments")}</Button>
             </Link>
           ) : null}
         </EmptyState>
       ) : null}
 
-      {progress.isLoading ? <Loader label="Cargando historial…" className="py-4" /> : recent.length ? (
+      {progress.isLoading ? <Loader label={t("exams.loadingHistory")} className="py-4" /> : recent.length ? (
         <Card>
-          <CardTitle>Historial de intentos</CardTitle>
-          <CardDescription>Abre un intento para ver tus respuestas y la corrección.</CardDescription>
+          <CardTitle>{t("exams.history")}</CardTitle>
+          <CardDescription>{t("exams.historyBody")}</CardDescription>
           <ul className="mt-4 space-y-1">
             {recent.map((item) => (
               <li key={item.id}>
                 <AttemptRow
                   title={item.exam_title}
-                  subtitle={formatDateTime(item.completed_at)}
+                  subtitle={formatDateTime(item.completed_at, locale)}
                   score={item.score}
                   href={`/exams/${item.exam_id}?attempt=${item.id}`}
                 />
@@ -129,14 +127,15 @@ export default function ExamsPage() {
 }
 
 function ExamRow({ exam, pending = false }: { exam: Exam; pending?: boolean }) {
+  const { t } = useI18n();
   const assignmentLabel =
     exam.can_assign && exam.assignment_count
-      ? `${exam.assignment_completed_count}/${exam.assignment_count} hechos`
+      ? t("exams.doneCount", { done: exam.assignment_completed_count, total: exam.assignment_count })
       : exam.assigned_to_me && exam.assignment_status === "completed"
-        ? "hecho"
+        ? t("exams.done")
         : exam.attempt_count
-          ? `${exam.attempt_count} ${exam.attempt_count === 1 ? "intento" : "intentos"}`
-          : examStatusLabel(exam.status);
+          ? `${exam.attempt_count} ${exam.attempt_count === 1 ? t("overview.attemptOne") : t("overview.attemptOther")}`
+          : t(`status.${exam.status === "archived" ? "archived" : exam.status}`);
 
   return (
     <li className="flex items-center justify-between gap-4 px-5 py-4">
@@ -150,25 +149,33 @@ function ExamRow({ exam, pending = false }: { exam: Exam; pending?: boolean }) {
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{exam.title}</p>
           <p className="text-xs text-muted-foreground">
-            {exam.kind} · {exam.question_count} preguntas
+            {exam.kind} · {t("exams.questions", { count: exam.question_count })}
             {exam.error_message ? ` · ${exam.error_message}` : ""}
           </p>
           {exam.status === "ready" ? (
             <p className="mt-1 text-xs">
               {exam.can_assign && exam.assignment_count ? (
                 <span className="text-accent">
-                  {exam.assignment_completed_count} de {exam.assignment_count}{" "}
-                  {exam.assignment_count === 1 ? "asignado" : "asignados"} completaron
+                  {t("exams.completedOf", {
+                    done: exam.assignment_completed_count,
+                    total: exam.assignment_count,
+                    assignedLabel:
+                      exam.assignment_count === 1 ? t("exams.assignedOne") : t("exams.assignedOther"),
+                  })}
                 </span>
               ) : exam.attempt_count ? (
                 <span className="text-accent">
-                  Última {formatScore(exam.last_score)} · {exam.attempt_count}{" "}
-                  {exam.attempt_count === 1 ? "intento" : "intentos"}
+                  {t("exams.lastScore", {
+                    score: formatScore(exam.last_score),
+                    count: exam.attempt_count,
+                    attemptLabel:
+                      exam.attempt_count === 1 ? t("overview.attemptOne") : t("overview.attemptOther"),
+                  })}
                 </span>
               ) : pending ? (
-                <span className="text-accent">Asignado · pendiente</span>
+                <span className="text-accent">{t("exams.assignedPendingShort")}</span>
               ) : (
-                <span className="text-muted-foreground">Aún no lo has hecho</span>
+                <span className="text-muted-foreground">{t("exams.notTaken")}</span>
               )}
             </p>
           ) : null}
@@ -182,20 +189,26 @@ function ExamRow({ exam, pending = false }: { exam: Exam; pending?: boolean }) {
               : undefined
           }
         >
-          {pending ? "pendiente" : assignmentLabel}
+          {pending ? t("common.pending") : assignmentLabel}
         </Badge>
         {exam.status === "ready" ? (
           <>
             {exam.can_assign ? (
               <Link href={`/exams/${exam.id}`}>
                 <Button size="sm" variant="outline">
-                  Asignar
+                  {t("exams.assign")}
                 </Button>
               </Link>
             ) : null}
             <Link href={`/exams/${exam.id}`}>
               <Button size="sm">
-                {pending ? "Hacer" : exam.attempt_count ? "Ver historial" : exam.can_assign ? "Ver" : "Hacer"}
+                {pending
+                  ? t("exams.take")
+                  : exam.attempt_count
+                    ? t("exams.viewHistory")
+                    : exam.can_assign
+                      ? t("exams.view")
+                      : t("exams.take")}
               </Button>
             </Link>
           </>
@@ -205,27 +218,10 @@ function ExamRow({ exam, pending = false }: { exam: Exam; pending?: boolean }) {
             className="w-36"
             value={exam.generated_count ?? 0}
             max={exam.question_count || 1}
-            label="Generando…"
+            label={t("documents.generating")}
           />
         ) : null}
       </div>
     </li>
   );
-}
-
-function examStatusLabel(status: Exam["status"]) {
-  switch (status) {
-    case "generating":
-      return "generando";
-    case "ready":
-      return "listo";
-    case "failed":
-      return "error";
-    case "assigned":
-      return "asignado";
-    case "archived":
-      return "archivo";
-    default:
-      return status;
-  }
 }

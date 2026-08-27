@@ -13,7 +13,15 @@ from app.models.exam import (
 )
 from app.models.flashcard import Flashcard
 from app.models.group import Group, GroupMember
-from app.models.identity import Invitation, Membership, MembershipRole, Organization, PlanTier, User
+from app.models.identity import (
+    Invitation,
+    Membership,
+    MembershipRole,
+    Organization,
+    PasswordResetToken,
+    PlanTier,
+    User,
+)
 from app.models.job import GenerationJob
 from app.models.support import ErrorReport
 
@@ -37,6 +45,7 @@ __all__ = [
     "Membership",
     "MembershipRole",
     "Organization",
+    "PasswordResetToken",
     "PlanTier",
     "Question",
     "QuestionKind",

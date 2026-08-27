@@ -9,18 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Loader } from "@/components/ui/loader";
 import { apiFetch, ApiError } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import { getToken, setSession } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
 import type { InvitationAccept, InvitationPublic, User } from "@/types/api";
 
-const roleLabel: Record<string, string> = {
-  owner: "propietario",
-  admin: "admin",
-  member: "miembro",
-  auditor: "auditor",
-};
-
 export default function InvitePage() {
+  const { t, locale } = useI18n();
   const params = useParams<{ token: string }>();
   const token = params.token;
   const [loggedIn, setLoggedIn] = useState(false);
@@ -70,29 +65,33 @@ export default function InvitePage() {
     preview.error instanceof ApiError
       ? preview.error.message
       : preview.error
-        ? "No se pudo cargar la invitación."
+        ? t("invite.loadError")
         : accept.error instanceof Error
           ? accept.error.message
           : null;
 
+  const role = invite ? t(`role.${invite.role}`) : "";
+
   return (
     <Card className="w-full max-w-md">
-      <CardTitle>Invitación a un equipo</CardTitle>
+      <CardTitle>{t("invite.title")}</CardTitle>
       {invite ? (
         <CardDescription>
-          {invite.organization_name} · rol {roleLabel[invite.role] ?? invite.role}. Caduca{" "}
-          {formatDate(invite.expires_at)}.
+          {t("invite.roleExpires", {
+            org: invite.organization_name,
+            role,
+            date: formatDate(invite.expires_at, locale),
+          })}
         </CardDescription>
       ) : preview.isLoading ? (
-        <Loader label="Cargando invitación…" className="mt-2" />
+        <Loader label={t("invite.loading")} className="mt-2" />
       ) : (
-        <CardDescription>Esta invitación no es válida o ya caducó.</CardDescription>
+        <CardDescription>{t("invite.invalid")}</CardDescription>
       )}
 
       {wrongAccount ? (
         <p className="mt-4 text-sm text-destructive">
-          Esta invitación es para {invite?.email}. Ahora mismo hay otra sesión ({me.data?.email}). Cierra
-          sesión y entra con el correo invitado.
+          {t("invite.forEmail", { email: invite?.email ?? "", current: me.data?.email ?? "" })}
         </p>
       ) : null}
 
@@ -105,26 +104,26 @@ export default function InvitePage() {
             loading={accept.isPending || accept.isSuccess}
             disabled={invite.status !== "pending"}
           >
-            {accept.isPending || accept.isSuccess ? "Uniendo…" : "Aceptar e entrar"}
+            {accept.isPending || accept.isSuccess ? t("invite.acceptingJoin") : t("invite.acceptEnter")}
           </Button>
         ) : null}
         {invite && !loggedIn ? (
           <>
             <Link href={`/register?invite=${token}`}>
-              <Button>Crear cuenta y unirme</Button>
+              <Button>{t("invite.createJoin")}</Button>
             </Link>
             <Link href={`/login?next=/invite/${token}`}>
-              <Button variant="outline">Ya tengo cuenta</Button>
+              <Button variant="outline">{t("invite.haveAccount")}</Button>
             </Link>
           </>
         ) : null}
         {wrongAccount ? (
           <Link href={`/login?next=/invite/${token}`}>
-            <Button>Entrar con {invite?.email}</Button>
+            <Button>{t("invite.enterAs", { email: invite?.email ?? "" })}</Button>
           </Link>
         ) : null}
         <Link href="/" className="text-sm text-muted-foreground hover:underline">
-          Ir al inicio
+          {t("invite.goHome")}
         </Link>
       </div>
     </Card>

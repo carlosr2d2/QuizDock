@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import RequestContext, get_context, get_current_user, get_db, require_roles
 from app.models import MembershipRole, User
 from app.schemas.auth import OrganizationRead
-from app.schemas.content import MemberProgressRead
+from app.schemas.content import MemberProgressRead, TeamAnalyticsRead
 from app.schemas.team import (
     GroupCreate,
     GroupMembersUpdate,
@@ -122,6 +122,14 @@ async def member_progress(
     return await ExamService(db).member_progress(
         ctx.organization_id, ctx.user.id, ctx.role, user_id
     )
+
+
+@router.get("/organizations/current/analytics", response_model=TeamAnalyticsRead)
+async def team_analytics(
+    ctx: RequestContext = Depends(get_context),
+    db: AsyncSession = Depends(get_db),
+) -> TeamAnalyticsRead:
+    return await ExamService(db).team_analytics(ctx.organization_id, ctx.role)
 
 
 @router.post("/organizations/current/groups", response_model=GroupRead, status_code=201)

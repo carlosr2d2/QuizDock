@@ -445,6 +445,7 @@ class TeamService:
             role=invitation.role,
             accept_url=url,
             expires_at=invitation.expires_at,
+            locale=actor.locale,
         )
         if not self.mailer.configured:
             logger.info("Invite for %s (SMTP not configured): %s", invitation.email, url)

@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = False
     smtp_use_ssl: bool = False
     smtp_timeout_seconds: float = 10.0
+    password_reset_expire_minutes: int = 60
 
     @computed_field  # type: ignore[prop-decorator]
     @property

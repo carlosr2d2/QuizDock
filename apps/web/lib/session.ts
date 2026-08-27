@@ -1,3 +1,5 @@
+import { tStored } from "@/lib/i18n/stored";
+
 const TOKEN_KEY = "qd_token";
 const ORG_KEY = "qd_org";
 const USER_KEY = "qd_user";
@@ -15,7 +17,7 @@ export function getOrgId(): string | null {
 async function syncSessionCookie(method: "POST" | "DELETE") {
   const response = await fetch("/api/session", { method, credentials: "same-origin" });
   if (!response.ok) {
-    throw new Error("No se pudo guardar la sesión");
+    throw new Error(tStored("error.session"));
   }
 }
 

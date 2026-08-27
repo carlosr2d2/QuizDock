@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { surfaceListClass } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
-import { roleLabel } from "@/lib/team";
+import { useT } from "@/lib/i18n/provider";
 import type { TeamMember, TeamSnapshot } from "@/types/api";
 
 export function MembersList({
@@ -19,6 +19,7 @@ export function MembersList({
   snapshot: TeamSnapshot;
   currentUserId?: string;
 }) {
+  const t = useT();
   const queryClient = useQueryClient();
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
 
@@ -30,7 +31,7 @@ export function MembersList({
 
   if (!snapshot.members.length) {
     return (
-      <EmptyState title="Sin miembros" description="Invita a alguien desde la sección Invitar." />
+      <EmptyState title={t("team.emptyMembers")} description={t("team.emptyMembersBody")} />
     );
   }
 
@@ -52,15 +53,15 @@ export function MembersList({
               >
                 <p className="truncate text-sm font-medium">
                   {member.full_name}
-                  {isSelf ? " · tú" : ""}
+                  {isSelf ? ` · ${t("team.you")}` : ""}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {member.email}
-                  {canOpenProgress ? " · ver exámenes" : ""}
+                  {canOpenProgress ? ` · ${t("team.viewExams")}` : ""}
                 </p>
               </button>
               <div className="flex shrink-0 items-center gap-2">
-                <Badge>{roleLabel[member.role]}</Badge>
+                <Badge>{t(`role.${member.role}`)}</Badge>
                 {canRemove ? (
                   <Button
                     size="sm"
@@ -68,7 +69,7 @@ export function MembersList({
                     onClick={() => removeMember.mutate(member.user_id)}
                     loading={removeMember.isPending && removeMember.variables === member.user_id}
                   >
-                    Quitar
+                    {t("team.remove")}
                   </Button>
                 ) : null}
               </div>

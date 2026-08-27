@@ -8,13 +8,15 @@ import { Card, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
-import { inviteRoles, roleLabel } from "@/lib/team";
+import { useI18n } from "@/lib/i18n/provider";
+import { inviteRoles } from "@/lib/team";
 import { formatDate } from "@/lib/utils";
 import type { Invitation, MembershipRole, TeamSnapshot } from "@/types/api";
 
 type InviteNotice = { email: string; sent: boolean };
 
 export function InviteCard({ snapshot }: { snapshot: TeamSnapshot }) {
+  const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [notice, setNotice] = useState<InviteNotice | null>(null);
@@ -72,26 +74,19 @@ export function InviteCard({ snapshot }: { snapshot: TeamSnapshot }) {
   }
 
   if (!snapshot.can_manage) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Solo el propietario o un administrador puede enviar invitaciones.
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">{t("team.onlyManagers")}</p>;
   }
 
   return (
     <Card>
-      <CardDescription>
-        Enviamos un correo con el enlace. El invitado entra con el mismo correo. Si el envío falla,
-        copia el enlace.
-      </CardDescription>
+      <CardDescription>{t("team.inviteCardBody")}</CardDescription>
       <form onSubmit={onInvite} className="mt-4 grid gap-3 sm:grid-cols-[1fr_8rem_auto] sm:items-end">
         <div className="space-y-2">
-          <Label htmlFor="invite-email">Correo</Label>
+          <Label htmlFor="invite-email">{t("common.email")}</Label>
           <Input id="invite-email" name="email" type="email" required placeholder="ana@empresa.com" />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="invite-role">Rol</Label>
+          <Label htmlFor="invite-role">{t("common.role")}</Label>
           <select
             id="invite-role"
             name="role"
@@ -100,21 +95,19 @@ export function InviteCard({ snapshot }: { snapshot: TeamSnapshot }) {
           >
             {inviteRoles.map((role) => (
               <option key={role} value={role}>
-                {roleLabel[role]}
+                {t(`role.${role}`)}
               </option>
             ))}
           </select>
         </div>
         <Button type="submit" loading={invite.isPending}>
-          {invite.isPending ? "Enviando…" : "Invitar"}
+          {invite.isPending ? t("team.sending") : t("team.inviteButton")}
         </Button>
       </form>
       {inviteError ? <p className="mt-3 text-sm text-destructive">{inviteError}</p> : null}
       {notice ? (
         <p className={`mt-3 text-sm ${notice.sent ? "text-foreground" : "text-destructive"}`}>
-          {notice.sent
-            ? `Correo enviado a ${notice.email}.`
-            : `No se pudo enviar el correo a ${notice.email}. Copia el enlace y envíalo tú.`}
+          {notice.sent ? t("team.sentTo", { email: notice.email }) : t("team.sendFailed", { email: notice.email })}
         </p>
       ) : null}
 
@@ -128,7 +121,10 @@ export function InviteCard({ snapshot }: { snapshot: TeamSnapshot }) {
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{item.email}</p>
                 <p className="text-xs text-muted-foreground">
-                  {roleLabel[item.role]} · caduca {formatDate(item.expires_at)}
+                  {t("team.expiresRole", {
+                    role: t(`role.${item.role}`),
+                    date: formatDate(item.expires_at, locale),
+                  })}
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -138,10 +134,10 @@ export function InviteCard({ snapshot }: { snapshot: TeamSnapshot }) {
                   onClick={() => resend.mutate(item.id)}
                   loading={resend.isPending && resend.variables === item.id}
                 >
-                  Reenviar
+                  {t("team.resend")}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => void copyInvite(item)}>
-                  {copiedId === item.id ? "Copiado" : "Copiar enlace"}
+                  {copiedId === item.id ? t("team.copied") : t("team.copyLink")}
                 </Button>
                 <Button
                   size="sm"
@@ -149,14 +145,14 @@ export function InviteCard({ snapshot }: { snapshot: TeamSnapshot }) {
                   onClick={() => revoke.mutate(item.id)}
                   loading={revoke.isPending && revoke.variables === item.id}
                 >
-                  Anular
+                  {t("team.revoke")}
                 </Button>
               </div>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-4 text-sm text-muted-foreground">Todavía no hay invitaciones pendientes.</p>
+        <p className="mt-4 text-sm text-muted-foreground">{t("team.noPending")}</p>
       )}
     </Card>
   );

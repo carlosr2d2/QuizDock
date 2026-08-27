@@ -45,6 +45,7 @@ TABLES = [
     "document_chunks",
     "documents",
     "invitations",
+    "password_reset_tokens",
     "memberships",
     "users",
     "organizations",

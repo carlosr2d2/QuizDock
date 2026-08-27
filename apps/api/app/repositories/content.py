@@ -235,6 +235,132 @@ class ExamRepository:
         )
         return [(attempt, title) for attempt, title in result.all()]
 
+    async def org_progress_aggregates(
+        self, organization_id: UUID
+    ) -> tuple[int, int, float | None, float | None]:
+        result = await self.session.execute(
+            select(
+                func.count(ExamAttempt.id),
+                func.count(func.distinct(ExamAttempt.exam_id)),
+                func.avg(ExamAttempt.score),
+                func.max(ExamAttempt.score),
+            ).where(
+                ExamAttempt.organization_id == organization_id,
+                ExamAttempt.completed_at.isnot(None),
+            )
+        )
+        count, taken, average, best = result.one()
+        return (
+            int(count or 0),
+            int(taken or 0),
+            float(average) if average is not None else None,
+            float(best) if best is not None else None,
+        )
+
+    async def progress_by_user(
+        self, organization_id: UUID
+    ) -> dict[UUID, tuple[int, int, float | None]]:
+        result = await self.session.execute(
+            select(
+                ExamAttempt.user_id,
+                func.count(ExamAttempt.id),
+                func.count(func.distinct(ExamAttempt.exam_id)),
+                func.avg(ExamAttempt.score),
+            )
+            .where(
+                ExamAttempt.organization_id == organization_id,
+                ExamAttempt.completed_at.isnot(None),
+            )
+            .group_by(ExamAttempt.user_id)
+        )
+        return {
+            user_id: (
+                int(count or 0),
+                int(taken or 0),
+                float(average) if average is not None else None,
+            )
+            for user_id, count, taken, average in result.all()
+        }
+
+    async def org_assignment_totals(self, organization_id: UUID) -> tuple[int, int]:
+        result = await self.session.execute(
+            select(
+                func.count(ExamAssignment.id),
+                func.sum(case((ExamAssignment.status == AssignmentStatus.COMPLETED, 1), else_=0)),
+            ).where(ExamAssignment.organization_id == organization_id)
+        )
+        total, completed = result.one()
+        return int(total or 0), int(completed or 0)
+
+    async def assignment_totals_by_user(self, organization_id: UUID) -> dict[UUID, tuple[int, int]]:
+        result = await self.session.execute(
+            select(
+                ExamAssignment.user_id,
+                func.count(ExamAssignment.id),
+                func.sum(case((ExamAssignment.status != AssignmentStatus.COMPLETED, 1), else_=0)),
+            )
+            .where(ExamAssignment.organization_id == organization_id)
+            .group_by(ExamAssignment.user_id)
+        )
+        return {
+            user_id: (int(total or 0), int(pending or 0))
+            for user_id, total, pending in result.all()
+        }
+
+    async def assigned_exam_counts(
+        self, organization_id: UUID
+    ) -> list[tuple[UUID, str, int, int]]:
+        result = await self.session.execute(
+            select(
+                Exam.id,
+                Exam.title,
+                func.count(ExamAssignment.id),
+                func.sum(case((ExamAssignment.status == AssignmentStatus.COMPLETED, 1), else_=0)),
+            )
+            .join(ExamAssignment, ExamAssignment.exam_id == Exam.id)
+            .where(
+                ExamAssignment.organization_id == organization_id,
+                Exam.organization_id == organization_id,
+            )
+            .group_by(Exam.id, Exam.title)
+            .order_by(Exam.title)
+        )
+        return [
+            (exam_id, title, int(total or 0), int(completed or 0))
+            for exam_id, title, total, completed in result.all()
+        ]
+
+    async def exam_score_averages(self, organization_id: UUID) -> dict[UUID, float]:
+        result = await self.session.execute(
+            select(ExamAttempt.exam_id, func.avg(ExamAttempt.score))
+            .where(
+                ExamAttempt.organization_id == organization_id,
+                ExamAttempt.completed_at.isnot(None),
+            )
+            .group_by(ExamAttempt.exam_id)
+        )
+        return {
+            exam_id: float(average)
+            for exam_id, average in result.all()
+            if average is not None
+        }
+
+    async def recent_attempts_for_org(
+        self, organization_id: UUID, limit: int = 12
+    ) -> list[tuple[ExamAttempt, str, str]]:
+        result = await self.session.execute(
+            select(ExamAttempt, Exam.title, User.full_name)
+            .join(Exam, Exam.id == ExamAttempt.exam_id)
+            .join(User, User.id == ExamAttempt.user_id)
+            .where(
+                ExamAttempt.organization_id == organization_id,
+                ExamAttempt.completed_at.isnot(None),
+            )
+            .order_by(ExamAttempt.completed_at.desc())
+            .limit(limit)
+        )
+        return [(attempt, title, name) for attempt, title, name in result.all()]
+
     async def retitle_from_filename(
         self,
         document_id: UUID,

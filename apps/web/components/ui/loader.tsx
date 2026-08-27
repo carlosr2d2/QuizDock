@@ -1,4 +1,7 @@
+"use client";
+
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n/provider";
 
 export function Spinner({ className }: { className?: string }) {
   return (
@@ -19,25 +22,27 @@ export function Spinner({ className }: { className?: string }) {
 }
 
 export function Loader({
-  label = "Cargando…",
+  label,
   className,
 }: {
   label?: string;
   className?: string;
 }) {
+  const t = useT();
   return (
     <div role="status" className={cn("flex items-center gap-2 text-sm text-muted-foreground", className)}>
       <Spinner className="text-accent" />
-      <span>{label}</span>
+      <span>{label ?? t("common.loading")}</span>
     </div>
   );
 }
 
-export function PageLoader({ label = "Cargando…" }: { label?: string }) {
+export function PageLoader({ label }: { label?: string }) {
+  const t = useT();
   return (
     <div className="flex min-h-[36vh] flex-col items-center justify-center gap-3" role="status">
       <Spinner className="h-7 w-7 text-accent" />
-      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="text-sm text-muted-foreground">{label ?? t("common.loading")}</p>
     </div>
   );
 }
@@ -59,6 +64,7 @@ export function ProgressBar({
   compact?: boolean;
   className?: string;
 }) {
+  const t = useT();
   const total = Math.max(max, 1);
   const current = Math.max(0, Math.min(value, total));
   const started = current > 0;
@@ -71,7 +77,7 @@ export function ProgressBar({
       aria-valuemin={0}
       aria-valuemax={total}
       aria-valuenow={current}
-      aria-label={label ?? "Progreso"}
+      aria-label={label ?? t("common.progress")}
     >
       {label ? (
         <p className={cn("text-muted-foreground", compact ? "text-xs" : "text-sm")}>{label}</p>
@@ -87,15 +93,19 @@ export function ProgressBar({
         )}
       </div>
       <p className={cn("text-muted-foreground", compact ? "text-[11px]" : "text-xs")}>
-        {started ? `${current} de ${total} · ${percent}%` : "Preparando…"}
+        {started
+          ? t("common.progressValue", { current, total, percent })
+          : t("common.preparing")}
       </p>
     </div>
   );
 }
 
-export function ListLoader({ rows = 4, label = "Cargando lista…" }: { rows?: number; label?: string }) {
+export function ListLoader({ rows = 4, label }: { rows?: number; label?: string }) {
+  const t = useT();
+  const resolved = label ?? t("common.loadingList");
   return (
-    <div className="space-y-3" role="status" aria-label={label}>
+    <div className="space-y-3" role="status" aria-label={resolved}>
       {Array.from({ length: rows }, (_, index) => (
         <div
           key={index}
@@ -109,7 +119,7 @@ export function ListLoader({ rows = 4, label = "Cargando lista…" }: { rows?: n
           <Skeleton className="h-8 w-20 shrink-0" />
         </div>
       ))}
-      <Loader label={label} />
+      <Loader label={resolved} />
     </div>
   );
 }

@@ -1,7 +1,10 @@
+"use client";
+
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { ReactNode } from "react";
 
+import { useT } from "@/lib/i18n/provider";
 import { cn, formatScore } from "@/lib/utils";
 
 type AttemptRowProps = {
@@ -19,11 +22,12 @@ export function AttemptRow({
   subtitle,
   score,
   active = false,
-  actionLabel = "Ver resultado",
+  actionLabel,
   href,
   onClick,
 }: AttemptRowProps) {
-  const label = active ? "Viendo" : actionLabel;
+  const t = useT();
+  const label = active ? t("common.viewing") : (actionLabel ?? t("common.viewResult"));
   const content = (
     <>
       <div className="min-w-0 flex-1">
@@ -70,7 +74,7 @@ export function AttemptRow({
 }
 
 export function AttemptHistoryCard({
-  title = "Historial de intentos",
+  title,
   description,
   children,
 }: {
@@ -78,9 +82,10 @@ export function AttemptHistoryCard({
   description?: string;
   children: ReactNode;
 }) {
+  const t = useT();
   return (
     <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
-      <h2 className="text-sm font-medium">{title}</h2>
+      <h2 className="text-sm font-medium">{title ?? t("exams.history")}</h2>
       {description ? <p className="mt-1 text-xs text-muted-foreground">{description}</p> : null}
       <ul className="mt-3 space-y-1">{children}</ul>
     </section>

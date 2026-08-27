@@ -1,3 +1,4 @@
+import { tStored } from "@/lib/i18n/stored";
 import { getOrgId, getToken, redirectToLogin } from "@/lib/session";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -22,11 +23,11 @@ export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) {
     if (error.message === "Failed to fetch" || error.name === "TypeError") {
-      return "No se pudo conectar con el servidor. Inténtalo de nuevo en unos segundos.";
+      return tStored("error.network");
     }
     return error.message;
   }
-  return "Ha ocurrido un error inesperado.";
+  return tStored("error.unexpected");
 }
 
 export function errorDetail(error: unknown): string {
@@ -37,7 +38,10 @@ export function errorDetail(error: unknown): string {
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers);
-  const isAuthPath = path.startsWith("/api/v1/auth/login") || path.startsWith("/api/v1/auth/register");
+  const isAuthPath =
+    path.startsWith("/api/v1/auth/login") ||
+    path.startsWith("/api/v1/auth/register") ||
+    path.startsWith("/api/v1/auth/recovery");
   const token = isAuthPath ? null : getToken();
   const orgId = isAuthPath ? null : (options.orgId ?? getOrgId());
 
@@ -64,7 +68,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     const raw = err instanceof Error ? err.message : String(err);
     throw new ApiError(
       0,
-      "No se pudo conectar con el servidor. Inténtalo de nuevo en unos segundos.",
+      tStored("error.network"),
       raw,
     );
   }
@@ -92,7 +96,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     }
     const message =
       response.status >= 500
-        ? "El servidor no pudo completar la solicitud. Puedes enviar un informe al equipo técnico."
+        ? tStored("error.server")
         : detail;
     throw new ApiError(response.status, message, detail);
   }

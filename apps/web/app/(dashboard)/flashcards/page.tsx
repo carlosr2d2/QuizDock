@@ -6,7 +6,7 @@ import { FlashcardsView } from "./flashcards-view";
 
 export default function FlashcardsPage() {
   return (
-    <Suspense fallback={<PageLoader label="Cargando flashcards…" />}>
+    <Suspense fallback={<PageLoader />}>
       <FlashcardsView />
     </Suspense>
   );

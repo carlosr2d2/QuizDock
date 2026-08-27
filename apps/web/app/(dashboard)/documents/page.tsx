@@ -15,8 +15,9 @@ import { ListLoader, Loader, Spinner } from "@/components/ui/loader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
+import { useI18n } from "@/lib/i18n/provider";
 import { canCreateContent } from "@/lib/permissions";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import type { CreditBalance, Document, Exam, GenerationJob, User } from "@/types/api";
 
 const MIN_QUESTIONS = 1;
@@ -25,6 +26,7 @@ const CREDIT_PER_QUESTION = 1;
 const QUESTION_PRESETS = [5, 10, 15, 20, 30];
 
 export default function DocumentsPage() {
+  const { t, locale } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -100,14 +102,14 @@ export default function DocumentsPage() {
     <div className="space-y-8">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Documentos</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("documents.title")}</h1>
           {credits.isLoading ? (
-            <Loader label="Consultando créditos…" className="mt-1" />
+            <Loader label={t("documents.loadingCredits")} className="mt-1" />
           ) : (
             <p className="mt-1 text-sm text-muted-foreground">
               {canAuthor
-                ? `Ingesta asíncrona y generación de evaluaciones. ${balance} créditos disponibles · 1 crédito por pregunta.`
-                : "Consulta los documentos del workspace. Solo un administrador puede subir archivos o generar exámenes."}
+                ? t("documents.authorHint", { balance })
+                : t("documents.memberHint")}
             </p>
           )}
         </div>
@@ -125,7 +127,7 @@ export default function DocumentsPage() {
               }}
             />
             <Button type="button" onClick={() => inputRef.current?.click()} loading={upload.isPending}>
-              {upload.isPending ? "Subiendo…" : "Subir documento"}
+              {upload.isPending ? t("documents.uploading") : t("documents.upload")}
             </Button>
           </div>
         ) : null}
@@ -133,15 +135,16 @@ export default function DocumentsPage() {
 
       {examDoc ? (
         <Card>
-          <CardTitle>Nuevo examen</CardTitle>
+          <CardTitle>{t("documents.newExam")}</CardTitle>
           <CardDescription>
-            {examDoc.title || examDoc.filename}. Elige cuántas preguntas generar. Cada una cuesta{" "}
-            {CREDIT_PER_QUESTION} crédito. El examen mezcla verdadero/falso y opción múltiple (una o
-            varias correctas).
+            {t("documents.newExamBody", {
+              title: examDoc.title || examDoc.filename,
+              cost: CREDIT_PER_QUESTION,
+            })}
           </CardDescription>
           <div className="mt-4 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="question-count">Número de preguntas</Label>
+              <Label htmlFor="question-count">{t("documents.questionCount")}</Label>
               <div className="flex flex-wrap gap-2">
                 {QUESTION_PRESETS.map((count) => (
                   <Button
@@ -169,15 +172,17 @@ export default function DocumentsPage() {
                 className="mt-2 max-w-[8rem]"
               />
               <p className="text-xs text-muted-foreground">
-                Entre {MIN_QUESTIONS} y {MAX_QUESTIONS}. Coste:{" "}
-                <span className={cn(!canAffordExam && "text-destructive")}>
-                  {examCountValid ? examCost : "—"} {examCost === 1 ? "crédito" : "créditos"}
-                </span>
-                {` · saldo ${balance}`}
+                {t("documents.costRange", {
+                  min: MIN_QUESTIONS,
+                  max: MAX_QUESTIONS,
+                  cost: examCountValid ? examCost : "—",
+                  balance,
+                })}
+                {` ${examCost === 1 ? t("common.credit") : t("common.credits")}`}
               </p>
               {examCountValid && !canAffordExam ? (
                 <p className="text-sm text-destructive">
-                  No hay créditos suficientes para {questionCount} preguntas.
+                  {t("documents.notEnough", { count: questionCount })}
                 </p>
               ) : null}
             </div>
@@ -192,11 +197,11 @@ export default function DocumentsPage() {
                 }}
               >
                 {generateExam.isPending
-                  ? "Generando…"
-                  : `Generar examen · ${examCountValid ? examCost : "—"} cr.`}
+                  ? t("documents.generating")
+                  : t("documents.generateCost", { cost: examCountValid ? examCost : "—" })}
               </Button>
               <Button type="button" variant="outline" onClick={() => setExamDoc(null)} disabled={generateExam.isPending}>
-                Cancelar
+                {t("common.cancel")}
               </Button>
             </div>
           </div>
@@ -205,12 +210,12 @@ export default function DocumentsPage() {
 
       {documents.isError ? (
         <ErrorState
-          title="No se pudieron cargar los documentos"
+          title={t("documents.loadError")}
           error={documents.error}
           onRetry={() => void documents.refetch()}
         />
       ) : documents.isLoading ? (
-        <ListLoader label="Cargando documentos…" />
+        <ListLoader label={t("documents.loadingList")} />
       ) : documents.data?.length ? (
         <ul className={surfaceListClass}>
           {documents.data.map((doc) => (
@@ -226,8 +231,8 @@ export default function DocumentsPage() {
                   <p className="truncate text-sm font-medium">{doc.title || doc.filename}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {doc.title !== doc.filename ? `${doc.filename} · ` : ""}
-                    {doc.page_count ? `${doc.page_count} páginas · ` : ""}
-                    {new Date(doc.created_at).toLocaleString()}
+                    {doc.page_count ? `${t("documents.pages", { count: doc.page_count })} · ` : ""}
+                    {formatDateTime(doc.created_at, locale)}
                     {doc.error_message ? ` · ${doc.error_message}` : ""}
                   </p>
                 </div>
@@ -245,7 +250,7 @@ export default function DocumentsPage() {
                   {doc.status === "uploaded" || doc.status === "processing" ? (
                     <Spinner className="h-3 w-3" />
                   ) : null}
-                  {statusLabel(doc.status)}
+                  {doc.status === "uploaded" ? t("status.queued") : t(`status.${doc.status}`)}
                 </Badge>
                 {doc.status === "ready" && canAuthor ? (
                   <>
@@ -259,7 +264,7 @@ export default function DocumentsPage() {
                       }}
                     >
                       <BookOpen className="h-3.5 w-3.5" />
-                      Examen
+                      {t("documents.exam")}
                     </Button>
                     <Button
                       size="sm"
@@ -273,7 +278,7 @@ export default function DocumentsPage() {
                       }}
                     >
                       <Layers className="h-3.5 w-3.5" />
-                      Flashcards · 12 cr.
+                      {t("documents.flashcardsCost")}
                     </Button>
                   </>
                 ) : null}
@@ -283,29 +288,12 @@ export default function DocumentsPage() {
         </ul>
       ) : (
         <EmptyState
-          title="Aún no hay documentos"
-          description={
-            canAuthor
-              ? "Sube un PDF, Markdown o texto. Cuando el estado sea listo, genera un examen o flashcards."
-              : "Un administrador del equipo debe subir los documentos de este workspace."
-          }
+          title={t("documents.emptyTitle")}
+          description={canAuthor ? t("documents.emptyAuthor") : t("documents.emptyMember")}
         />
       )}
       {upload.error ? <p className="text-sm text-destructive">{upload.error.message}</p> : null}
       {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
     </div>
   );
-}
-
-function statusLabel(status: Document["status"]) {
-  switch (status) {
-    case "uploaded":
-      return "en cola";
-    case "processing":
-      return "procesando";
-    case "ready":
-      return "listo";
-    case "failed":
-      return "error";
-  }
 }
