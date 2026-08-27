@@ -136,3 +136,29 @@ async def test_update_locale_persists_choice():
     updated = await service.update_locale(user, "en")
     assert updated.locale == "en"
     assert service.session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_update_profile_changes_name_and_password():
+    service = _auth_service()
+    user = make_user(password_hash=hash_password("demo12345"))
+    await service.users.add(user)
+    updated = await service.update_profile(
+        user,
+        full_name="Nuevo Nombre",
+        current_password="demo12345",
+        password="nuevaClave1",
+    )
+    assert updated.full_name == "Nuevo Nombre"
+    assert verify_password("nuevaClave1", updated.hashed_password)
+
+
+@pytest.mark.asyncio
+async def test_update_profile_rejects_wrong_current_password():
+    service = _auth_service()
+    user = make_user(password_hash=hash_password("demo12345"))
+    await service.users.add(user)
+    with pytest.raises(AuthError) as caught:
+        await service.update_profile(user, current_password="nope", password="nuevaClave1")
+    assert caught.value.status_code == 400
+    assert verify_password("demo12345", user.hashed_password)

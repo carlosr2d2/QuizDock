@@ -74,6 +74,7 @@ class AuthService:
             plan=PlanTier.FREE,
             is_personal=True,
             credit_balance=settings.signup_bonus_credits,
+            billing_country=settings.payment_default_country,
         )
         await self.orgs.add(org)
 
@@ -168,11 +169,28 @@ class AuthService:
         return await self._finish_auth(hydrated, None)
 
     async def update_locale(self, user: User, locale: str) -> User:
-        resolved = "en" if locale == "en" else "es"
+        return await self.update_profile(user, locale=locale)
+
+    async def update_profile(
+        self,
+        user: User,
+        *,
+        locale: str | None = None,
+        full_name: str | None = None,
+        current_password: str | None = None,
+        password: str | None = None,
+    ) -> User:
         persisted = await self.users.get_by_id(user.id)
         if persisted is None:
             raise AuthError("User not found", 404)
-        persisted.locale = resolved
+        if locale is not None:
+            persisted.locale = "en" if locale == "en" else "es"
+        if full_name is not None:
+            persisted.full_name = full_name.strip()
+        if password is not None:
+            if not current_password or not verify_password(current_password, persisted.hashed_password):
+                raise AuthError("Current password is incorrect", 400)
+            persisted.hashed_password = hash_password(password)
         await self.session.commit()
         return persisted
 

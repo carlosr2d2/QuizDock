@@ -22,3 +22,10 @@ export function formatDateTime(value: string | Date, locale: Locale = DEFAULT_LO
   const date = typeof value === "string" ? new Date(value) : value;
   return date.toLocaleString(localeTag(locale), { dateStyle: "medium", timeStyle: "short" });
 }
+
+export function formatMoney(amount: number, currency: string, locale: Locale = DEFAULT_LOCALE): string {
+  return new Intl.NumberFormat(localeTag(locale), {
+    style: "currency",
+    currency: currency.toUpperCase(),
+  }).format(amount / 100);
+}

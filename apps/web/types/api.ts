@@ -12,6 +12,7 @@ export type Organization = {
   plan: PlanTier;
   is_personal: boolean;
   credit_balance: number;
+  billing_country: string;
 };
 
 export type Membership = {
@@ -273,6 +274,56 @@ export type CreditBalance = {
   organization_id: string;
   balance: number;
   plan: string;
+};
+
+export type PaymentProviderId = "stripe" | "wompi" | "simulated" | string;
+
+export type PackPrice = {
+  provider: PaymentProviderId;
+  amount: number;
+  currency: string;
+};
+
+export type CreditPack = {
+  id: string;
+  credits: number;
+  prices: PackPrice[];
+};
+
+export type PaymentProvider = {
+  id: PaymentProviderId;
+  label: string;
+  recommended: boolean;
+  currencies: string[];
+};
+
+export type BillingCatalog = {
+  billing_country: string;
+  default_provider: PaymentProviderId | null;
+  can_purchase: boolean;
+  providers: PaymentProvider[];
+  packs: CreditPack[];
+};
+
+export type PaymentOrder = {
+  id: string;
+  provider: PaymentProviderId;
+  pack_id: string;
+  credits: number;
+  amount: number;
+  currency: string;
+  status: "pending" | "completed" | "failed" | "canceled" | string;
+  checkout_url: string | null;
+  created_at: string;
+  completed_at: string | null;
+};
+
+export type CreditTransaction = {
+  id: string;
+  amount: number;
+  reason: string;
+  balance_after: number;
+  created_at: string;
 };
 
 export type InvitationStatus = "pending" | "accepted" | "revoked" | "expired";

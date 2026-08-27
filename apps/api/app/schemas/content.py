@@ -374,3 +374,60 @@ class CreditBalanceRead(BaseModel):
     organization_id: UUID
     balance: int
     plan: str
+
+
+class PackPriceRead(BaseModel):
+    provider: str
+    amount: int
+    currency: str
+
+
+class CreditPackRead(BaseModel):
+    id: str
+    credits: int
+    prices: list[PackPriceRead]
+
+
+class PaymentProviderRead(BaseModel):
+    id: str
+    label: str
+    recommended: bool
+    currencies: list[str]
+
+
+class BillingCatalogRead(BaseModel):
+    billing_country: str
+    default_provider: str | None
+    can_purchase: bool
+    providers: list[PaymentProviderRead]
+    packs: list[CreditPackRead]
+
+
+class CheckoutStartRequest(BaseModel):
+    pack_id: str = Field(min_length=1, max_length=32)
+    provider: str | None = Field(default=None, max_length=32)
+
+
+class CheckoutRead(ORMModel):
+    id: UUID
+    provider: str
+    pack_id: str
+    credits: int
+    amount: int
+    currency: str
+    status: str
+    checkout_url: str | None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class BillingCountryUpdate(BaseModel):
+    billing_country: str = Field(min_length=2, max_length=2)
+
+
+class CreditTransactionRead(ORMModel):
+    id: UUID
+    amount: int
+    reason: str
+    balance_after: int
+    created_at: datetime

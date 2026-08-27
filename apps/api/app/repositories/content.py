@@ -636,6 +636,15 @@ class BillingRepository:
         await self.session.flush()
         return tx
 
+    async def list_for_org(self, organization_id: UUID, *, limit: int = 40) -> list[CreditTransaction]:
+        result = await self.session.execute(
+            select(CreditTransaction)
+            .where(CreditTransaction.organization_id == organization_id)
+            .order_by(CreditTransaction.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
 
 class JobRepository:
     def __init__(self, session: AsyncSession) -> None:

@@ -78,6 +78,7 @@ async def seed(session, email: str, password: str, full_name: str, credits: int)
         plan=PlanTier.INDIVIDUAL,
         is_personal=True,
         credit_balance=credits,
+        billing_country="CO",
     )
     session.add(org)
     await session.flush()
@@ -115,6 +116,7 @@ async def seed(session, email: str, password: str, full_name: str, credits: int)
         plan=PlanTier.TEAM,
         is_personal=False,
         credit_balance=credits,
+        billing_country="CO",
     )
     session.add(team)
     await session.flush()

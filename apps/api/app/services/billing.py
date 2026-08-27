@@ -84,3 +84,9 @@ class BillingService:
         )
         await self.session.flush()
         return org.credit_balance
+
+    async def list_transactions(self, organization_id: UUID, *, limit: int = 40):
+        org = await self.orgs.get(organization_id)
+        if org is None:
+            raise NotFoundError("Organization not found")
+        return await self.txs.list_for_org(organization_id, limit=limit)

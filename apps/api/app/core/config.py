@@ -53,6 +53,16 @@ class Settings(BaseSettings):
     smtp_timeout_seconds: float = 10.0
     password_reset_expire_minutes: int = 60
 
+    payment_default_country: str = "CO"
+    payment_allow_simulated: bool = True
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_api_base: str = "https://api.stripe.com"
+    wompi_private_key: str = ""
+    wompi_events_secret: str = ""
+    wompi_api_base: str = "https://sandbox.wompi.co/v1"
+    wompi_checkout_base: str = "https://checkout.wompi.co/l"
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def cors_origin_list(self) -> list[str]:

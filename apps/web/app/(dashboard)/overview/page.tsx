@@ -118,7 +118,7 @@ export default function OverviewPage() {
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat title={t("overview.credits")} value={credits.data?.balance ?? "—"} href="/documents" loading={credits.isLoading} />
+        <Stat title={t("overview.credits")} value={credits.data?.balance ?? "—"} href="/account" loading={credits.isLoading} />
         <Stat title={t("nav.documents")} value={documents.data?.length ?? "—"} href="/documents" loading={documents.isLoading} />
         <Stat title={t("nav.exams")} value={exams.data?.length ?? "—"} href="/exams" loading={exams.isLoading} />
         <Stat title={t("nav.flashcards")} value={snapshot?.flashcard_count ?? "—"} href="/flashcards" loading={progress.isLoading} />

@@ -54,6 +54,7 @@ class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     is_personal: Mapped[bool] = mapped_column(default=False)
     credit_balance: Mapped[int] = mapped_column(default=0)
+    billing_country: Mapped[str] = mapped_column(String(2), default="CO")
 
     memberships: Mapped[list[Membership]] = relationship(back_populates="organization")
     invitations: Mapped[list[Invitation]] = relationship(back_populates="organization")

@@ -104,6 +104,9 @@ npm run dev
 4. Hacer el cuestionario o repasar tarjetas (SM-2). Si la generación falla, los créditos se reembolsan.
 5. En un workspace de equipo, **Equipo → Invitar** envía el correo. En local los mensajes aparecen en [Mailpit](http://localhost:8025).
 6. **Recuperar acceso** en `/recovery` envía un enlace de una hora. En local, el correo también llega a Mailpit.
+7. **Mi cuenta** (`/account`) muestra créditos y paquetes. El cobro no está atado a una sola pasarela: Stripe (tarjetas internacionales) y Wompi (Colombia, COP). En desarrollo, si no hay claves, hay una simulación que acredita sin cobrar.
+
+País de facturación por defecto: `CO` (Wompi recomendado). Stripe suele fallar con tarjetas colombianas; el catálogo prioriza Wompi en Colombia. Webhooks: `POST /api/v1/billing/webhooks/stripe` y `POST /api/v1/billing/webhooks/wompi`. Las claves van en `.env` (`STRIPE_*`, `WOMPI_*`).
 
 Sin `LLM_API_KEY`, el worker usa embeddings locales (hash) y un generador heurístico. Con Gemini, pon en `.env` una clave de [Google AI Studio](https://aistudio.google.com/apikey) (`AQ.` o `AIza`) y:
 

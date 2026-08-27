@@ -62,6 +62,7 @@ class OrganizationRead(ORMModel):
     plan: PlanTier
     is_personal: bool
     credit_balance: int
+    billing_country: str
 
 
 class MembershipRead(ORMModel):
@@ -89,4 +90,7 @@ class AuthResponse(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    locale: str = Field(pattern="^(es|en)$")
+    locale: str | None = Field(default=None, pattern="^(es|en)$")
+    full_name: str | None = Field(default=None, min_length=2, max_length=200)
+    current_password: str | None = Field(default=None, min_length=1, max_length=128)
+    password: str | None = Field(default=None, min_length=8, max_length=128)

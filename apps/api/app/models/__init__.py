@@ -1,4 +1,4 @@
-from app.models.billing import CreditTransaction
+from app.models.billing import CreditTransaction, PaymentOrder, PaymentStatus
 from app.models.chunk import DocumentChunk
 from app.models.document import Document, DocumentStatus
 from app.models.exam import (
@@ -27,6 +27,8 @@ from app.models.support import ErrorReport
 
 __all__ = [
     "CreditTransaction",
+    "PaymentOrder",
+    "PaymentStatus",
     "DocumentChunk",
     "Document",
     "DocumentStatus",

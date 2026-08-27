@@ -62,6 +62,7 @@ class TeamService:
             plan=PlanTier.TEAM,
             is_personal=False,
             credit_balance=0,
+            billing_country="CO",
         )
         await self.orgs.add(org)
         await self.memberships.add(

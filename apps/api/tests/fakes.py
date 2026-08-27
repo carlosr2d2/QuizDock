@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from app.models import Invitation, Membership, MembershipRole, Organization, PasswordResetToken, PlanTier, User
+from app.models.billing import PaymentOrder, PaymentStatus
 from app.models.document import Document, DocumentStatus
 from app.models.exam import Exam, ExamAssignment, ExamKind, ExamStatus, Question
 from app.models.identity import InvitationStatus
@@ -276,6 +277,47 @@ class FakeTxRepo:
         ensure_id(transaction)
         self.items.append(transaction)
         return transaction
+
+    async def list_for_org(self, organization_id: UUID, *, limit: int = 40) -> list:
+        matches = [item for item in self.items if getattr(item, "organization_id", None) == organization_id]
+        return matches[:limit]
+
+
+class FakePaymentOrderRepo:
+    def __init__(self) -> None:
+        self.items: list[PaymentOrder] = []
+
+    async def add(self, order: PaymentOrder) -> PaymentOrder:
+        ensure_id(order)
+        if order.status is None:
+            order.status = PaymentStatus.PENDING
+        self.items.append(order)
+        return order
+
+    async def get(self, order_id: UUID, organization_id: UUID | None = None) -> PaymentOrder | None:
+        for item in self.items:
+            if item.id != order_id:
+                continue
+            if organization_id is not None and item.organization_id != organization_id:
+                return None
+            return item
+        return None
+
+    async def get_for_update(self, order_id: UUID) -> PaymentOrder | None:
+        return await self.get(order_id)
+
+    async def get_by_provider_session(self, provider: str, provider_session_id: str) -> PaymentOrder | None:
+        return next(
+            (
+                item
+                for item in self.items
+                if item.provider == provider and item.provider_session_id == provider_session_id
+            ),
+            None,
+        )
+
+    async def list_for_org(self, organization_id: UUID, *, limit: int = 40) -> list[PaymentOrder]:
+        return [item for item in self.items if item.organization_id == organization_id][:limit]
 
 
 class FakeDocumentRepo:
@@ -592,6 +634,7 @@ def make_org(
     credit_balance: int = 50,
     is_personal: bool = True,
     plan: PlanTier = PlanTier.FREE,
+    billing_country: str = "CO",
 ) -> Organization:
     return Organization(
         id=uuid4(),
@@ -600,6 +643,7 @@ def make_org(
         plan=plan,
         is_personal=is_personal,
         credit_balance=credit_balance,
+        billing_country=billing_country,
         created_at=utcnow(),
         updated_at=utcnow(),
     )

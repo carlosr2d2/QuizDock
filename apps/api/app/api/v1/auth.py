@@ -89,6 +89,12 @@ async def update_me(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     try:
-        return await AuthService(db).update_locale(user, payload.locale)
+        return await AuthService(db).update_profile(
+            user,
+            locale=payload.locale,
+            full_name=payload.full_name,
+            current_password=payload.current_password,
+            password=payload.password,
+        )
     except AuthError as extra:
         raise HTTPException(status_code=extra.status_code, detail=extra.message) from extra

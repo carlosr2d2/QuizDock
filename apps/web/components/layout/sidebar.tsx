@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpen,
+  CircleUser,
   FileText,
   LayoutDashboard,
   Layers,
@@ -79,6 +80,7 @@ export function Sidebar() {
             ],
           },
         ]),
+    { href: "/account", label: t("nav.account"), icon: CircleUser },
   ];
 
   return (
@@ -173,7 +175,9 @@ export function Sidebar() {
                   {t("nav.loadingName")}
                 </>
               ) : (
-                (me.data?.full_name ?? t("common.user"))
+                <Link href="/account" className="truncate hover:underline">
+                  {me.data?.full_name ?? t("common.user")}
+                </Link>
               )}
             </p>
             {me.isLoading ? (
