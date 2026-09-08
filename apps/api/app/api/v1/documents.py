@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,3 +66,13 @@ async def get_document(
 ) -> DocumentRead:
     document = await DocumentService(db).get(document_id, ctx.organization_id)
     return DocumentRead.model_validate(document)
+
+
+@router.delete("/{document_id}", status_code=204, response_class=Response)
+async def delete_document(
+    document_id: UUID,
+    ctx: RequestContext = Depends(require_roles(*AUTHOR_ROLES, detail=AUTHOR_DENIED)),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    await DocumentService(db).delete(document_id, ctx.organization_id, ctx.role, actor_id=ctx.user.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

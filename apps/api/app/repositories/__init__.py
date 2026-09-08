@@ -1,3 +1,4 @@
+from app.repositories.audit import AuditRepository
 from app.repositories.chunks import ChunkRepository
 from app.repositories.content import (
     BillingRepository,
@@ -14,6 +15,7 @@ from app.repositories.identity import (
 )
 
 __all__ = [
+    "AuditRepository",
     "BillingRepository",
     "ChunkRepository",
     "DocumentRepository",

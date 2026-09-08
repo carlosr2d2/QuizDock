@@ -145,6 +145,20 @@ export type ProgressAttempt = AttemptSummary & {
   exam_title: string;
 };
 
+export type WeakExam = {
+  exam_id: string;
+  exam_title: string;
+  average_score: number;
+  attempt_count: number;
+};
+
+export type KindAccuracy = {
+  kind: QuestionKind;
+  correct: number;
+  total: number;
+  accuracy: number | null;
+};
+
 export type MemberAssignmentProgress = {
   exam_id: string;
   exam_title: string;
@@ -222,9 +236,14 @@ export type Progress = {
   best_score: number | null;
   last_score: number | null;
   recent: ProgressAttempt[];
+  trend: ProgressAttempt[];
+  weak_exams: WeakExam[];
+  kind_accuracy: KindAccuracy[];
+  study_streak_days: number;
   flashcard_count: number;
   flashcard_due: number;
   flashcard_reviewed: number;
+  flashcard_mastered: number;
   flashcard_last_reviewed_at: string | null;
 };
 
@@ -383,4 +402,45 @@ export type TeamSnapshot = {
   members: TeamMember[];
   invitations: Invitation[];
   groups?: TeamGroup[];
+};
+
+export type AuditAction =
+  | "member.invited"
+  | "member.invite_resent"
+  | "member.invite_revoked"
+  | "member.joined"
+  | "member.removed"
+  | "group.created"
+  | "group.renamed"
+  | "group.deleted"
+  | "group.members_updated"
+  | "document.uploaded"
+  | "document.deleted"
+  | "exam.generation_requested"
+  | "exam.assigned"
+  | "exam.unassigned"
+  | "flashcard.generation_requested"
+  | "organization.created"
+  | string;
+
+export type AuditEvent = {
+  id: string;
+  organization_id: string;
+  actor_user_id: string | null;
+  actor_email: string | null;
+  actor_full_name: string | null;
+  actor_role: MembershipRole | null;
+  action: AuditAction;
+  target_type: string;
+  target_id: string | null;
+  summary: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AuditEventList = {
+  items: AuditEvent[];
+  total: number;
+  limit: number;
+  offset: number;
 };

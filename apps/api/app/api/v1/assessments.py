@@ -23,6 +23,7 @@ from app.schemas.content import (
 )
 from app.services.content import FlashcardService
 from app.services.generation import ExamService, FlashcardGenerationService
+from app.services.progress import merge_personal_progress
 from app.services.permissions import AUTHOR_DENIED, AUTHOR_ROLES
 
 WRITE_ROLES = (MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.MEMBER)
@@ -120,7 +121,9 @@ async def unassign_exam(
     ctx: RequestContext = Depends(require_roles(*ASSIGN_ROLES)),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    await ExamService(db).unassign(exam_id, ctx.organization_id, ctx.role, user_id)
+    await ExamService(db).unassign(
+        exam_id, ctx.organization_id, ctx.role, user_id, actor_id=ctx.user.id
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -197,4 +200,4 @@ async def get_progress(
 ) -> ProgressRead:
     exams = await ExamService(db).progress(ctx.organization_id, ctx.user.id)
     cards = await FlashcardService(db).progress(ctx.organization_id, ctx.user.id)
-    return exams.model_copy(update=cards.model_dump())
+    return merge_personal_progress(exams, cards)

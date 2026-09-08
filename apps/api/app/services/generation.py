@@ -21,6 +21,7 @@ from app.models import (
     Question,
     QuestionKind,
 )
+from app.models.audit import AuditAction
 from app.models.exam import AssignmentStatus
 from app.repositories.content import DocumentRepository, ExamRepository, FlashcardRepository, JobRepository
 from app.repositories.groups import GroupRepository
@@ -36,9 +37,11 @@ from app.schemas.content import (
     ExamRead,
     FlashcardGenerateRequest,
     ProgressAttempt,
+    KindAccuracyRead,
     MemberAssignmentProgress,
     MemberProgressRead,
     ProgressRead,
+    WeakExamRead,
     QuestionPublic,
     QuestionResult,
     TeamAnalyticsRead,
@@ -47,8 +50,16 @@ from app.schemas.content import (
     TeamRecentAttempt,
     exam_read,
 )
+from app.services.audit import AuditService
 from app.services.billing import BillingService
 from app.services.errors import ConflictError, DomainError, ForbiddenError, NotFoundError
+from app.services.progress import (
+    KIND_ACCURACY_ATTEMPT_LIMIT,
+    TREND_LIMIT,
+    WEAK_AVERAGE_THRESHOLD,
+    as_utc_date,
+    consecutive_streak,
+)
 from app.services.llm import generate_exam_from_contexts, generate_flashcards_from_contexts
 from app.services.permissions import require_author
 from app.services.rag import RagService
@@ -84,6 +95,47 @@ def question_kind(question: Question) -> QuestionKind:
     return QuestionKind.parse(question.kind)
 
 
+KIND_ACCURACY_ORDER = (
+    QuestionKind.TRUE_FALSE,
+    QuestionKind.SINGLE_CHOICE,
+    QuestionKind.MULTIPLE_CHOICE,
+)
+
+
+def kind_accuracy_from_attempts(
+    attempts: list[ExamAttempt],
+    questions_by_exam: dict[UUID, list[Question]],
+) -> list[KindAccuracyRead]:
+    tallies: dict[QuestionKind, list[int]] = {kind: [0, 0] for kind in KIND_ACCURACY_ORDER}
+    for attempt in attempts:
+        answers = attempt.answers or {}
+        for question in questions_by_exam.get(attempt.exam_id, []):
+            raw = answers.get(str(question.id))
+            if raw is None:
+                raw = answers.get(question.id)
+            selected = answer_indices(raw)
+            expected = question_correct_indices(question)
+            kind = question_kind(question)
+            bucket = tallies.setdefault(kind, [0, 0])
+            bucket[1] += 1
+            if selected == expected:
+                bucket[0] += 1
+    rows: list[KindAccuracyRead] = []
+    for kind in KIND_ACCURACY_ORDER:
+        correct, total = tallies.get(kind, [0, 0])
+        if total == 0:
+            continue
+        rows.append(
+            KindAccuracyRead(
+                kind=kind,
+                correct=correct,
+                total=total,
+                accuracy=round(100.0 * correct / total, 1),
+            )
+        )
+    return rows
+
+
 class ExamService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -93,6 +145,7 @@ class ExamService:
         self.groups = GroupRepository(session)
         self.orgs = OrganizationRepository(session)
         self.billing = BillingService(session)
+        self.audit = AuditService(session)
 
     async def list_reads(
         self,
@@ -203,17 +256,34 @@ class ExamService:
         attempt_count, exams_taken, average, best = await self.repo.progress_aggregates(
             organization_id, user_id
         )
-        recent_rows = await self.repo.recent_attempts(organization_id, user_id, limit=limit)
+        recent_rows = await self.repo.recent_attempts(
+            organization_id, user_id, limit=max(limit, KIND_ACCURACY_ATTEMPT_LIMIT)
+        )
         recent = [
-            ProgressAttempt(
-                id=attempt.id,
-                exam_id=attempt.exam_id,
-                exam_title=title,
-                score=attempt.score or 0,
-                completed_at=attempt.completed_at or attempt.created_at,
-            )
-            for attempt, title in recent_rows
+            self._progress_attempt(attempt, title) for attempt, title in recent_rows[:limit]
         ]
+        trend = [
+            self._progress_attempt(attempt, title)
+            for attempt, title in reversed(recent_rows[:TREND_LIMIT])
+        ]
+        weak_rows = await self.repo.weak_exam_aggregates(organization_id, user_id)
+        weak_exams = [
+            WeakExamRead(
+                exam_id=exam_id,
+                exam_title=title,
+                average_score=round(avg_score, 1),
+                attempt_count=count,
+            )
+            for exam_id, title, avg_score, count in weak_rows
+            if avg_score < WEAK_AVERAGE_THRESHOLD
+        ][:3]
+        accuracy_attempts = [attempt for attempt, _title in recent_rows[:KIND_ACCURACY_ATTEMPT_LIMIT]]
+        exam_ids = {attempt.exam_id for attempt in accuracy_attempts}
+        questions_by_exam: dict[UUID, list[Question]] = {}
+        for question in await self.repo.questions_for_exams(exam_ids, organization_id):
+            questions_by_exam.setdefault(question.exam_id, []).append(question)
+        completed_at = await self.repo.completed_at_times(organization_id, user_id)
+        study_dates = [as_utc_date(value) for value in completed_at]
         return ProgressRead(
             attempt_count=attempt_count,
             exams_taken=exams_taken,
@@ -221,6 +291,21 @@ class ExamService:
             best_score=round(best, 1) if best is not None else None,
             last_score=recent[0].score if recent else None,
             recent=recent,
+            trend=trend,
+            weak_exams=weak_exams,
+            kind_accuracy=kind_accuracy_from_attempts(accuracy_attempts, questions_by_exam),
+            study_streak_days=consecutive_streak(study_dates),
+            study_dates=study_dates,
+        )
+
+    @staticmethod
+    def _progress_attempt(attempt: ExamAttempt, title: str) -> ProgressAttempt:
+        return ProgressAttempt(
+            id=attempt.id,
+            exam_id=attempt.exam_id,
+            exam_title=title,
+            score=attempt.score or 0,
+            completed_at=attempt.completed_at or attempt.created_at,
         )
 
     async def member_progress(
@@ -392,6 +477,16 @@ class ExamService:
             credit_cost=cost,
         )
         await self.repo.add(exam)
+        await self.audit.record(
+            organization_id,
+            AuditAction.EXAM_GENERATION_REQUESTED,
+            actor_user_id=owner_user_id,
+            actor_role=role,
+            target_type="exam",
+            target_id=exam.id,
+            summary=f"Solicitó generar «{title}» ({payload.question_count} preguntas)",
+            payload={"title": title, "question_count": payload.question_count, "credit_cost": cost},
+        )
         await self.session.commit()
         await self.session.refresh(exam)
 
@@ -665,6 +760,20 @@ class ExamService:
                     status=AssignmentStatus.PENDING,
                 )
             )
+        await self.audit.record(
+            organization_id,
+            AuditAction.EXAM_ASSIGNED,
+            actor_user_id=actor_id,
+            actor_role=role,
+            target_type="exam",
+            target_id=exam.id,
+            summary=f"Asignó «{exam.title}» a {len(targets)} miembro(s)",
+            payload={
+                "title": exam.title,
+                "user_count": len(targets),
+                "group_count": len(payload.group_ids),
+            },
+        )
         await self.session.commit()
         return await self.list_assignment_reads(exam.id, organization_id)
 
@@ -674,6 +783,7 @@ class ExamService:
         organization_id: UUID,
         role: MembershipRole,
         user_id: UUID,
+        actor_id: UUID | None = None,
     ) -> None:
         org = await self._org(organization_id)
         if not self._can_assign(org, role):
@@ -683,7 +793,18 @@ class ExamService:
             raise NotFoundError("Asignación no encontrada")
         if assignment.status == AssignmentStatus.COMPLETED:
             raise DomainError("No se puede quitar una asignación ya completada.")
+        exam = await self.get(exam_id, organization_id)
         await self.repo.delete_assignment(assignment)
+        await self.audit.record(
+            organization_id,
+            AuditAction.EXAM_UNASSIGNED,
+            actor_user_id=actor_id,
+            actor_role=role,
+            target_type="exam",
+            target_id=exam_id,
+            summary=f"Quitó una asignación de «{exam.title}»",
+            payload={"title": exam.title, "user_id": str(user_id)},
+        )
         await self.session.commit()
 
     async def list_assignment_reads(self, exam_id: UUID, organization_id: UUID) -> list[AssignmentRead]:
@@ -748,6 +869,7 @@ class FlashcardGenerationService:
         self.documents = DocumentRepository(session)
         self.cards = FlashcardRepository(session)
         self.billing = BillingService(session)
+        self.audit = AuditService(session)
 
     async def get_job(self, job_id: UUID, organization_id: UUID) -> GenerationJob:
         job = await self.jobs.get(job_id, organization_id)
@@ -781,6 +903,17 @@ class FlashcardGenerationService:
             item_count=payload.card_count,
         )
         await self.jobs.add(job)
+        title = display_name(document.display_title, document.filename)
+        await self.audit.record(
+            organization_id,
+            AuditAction.FLASHCARD_GENERATION_REQUESTED,
+            actor_user_id=user_id,
+            actor_role=role,
+            target_type="document",
+            target_id=document.id,
+            summary=f"Solicitó flashcards de «{title}» ({payload.card_count})",
+            payload={"title": title, "card_count": payload.card_count, "credit_cost": cost},
+        )
         await self.session.commit()
         await self.session.refresh(job)
 

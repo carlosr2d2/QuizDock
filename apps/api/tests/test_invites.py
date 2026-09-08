@@ -15,6 +15,7 @@ from tests.fakes import (
     FakeOrgRepo,
     FakeSession,
     FakeUserRepo,
+    FakeAuditService,
     make_membership,
     make_org,
     make_user,
@@ -31,6 +32,7 @@ def _team(org, mailer: FakeMailer | None = None) -> tuple[TeamService, FakeMaile
     service.memberships = FakeMembershipRepo()
     service.groups = FakeGroupRepo()
     service.invitations = FakeInvitationRepo()
+    service.audit = FakeAuditService()
     return service, resolved
 
 
@@ -184,3 +186,58 @@ async def test_resend_unknown_invitation():
     service, _ = _team(org)
     with pytest.raises(NotFoundError):
         await service.resend(org.id, owner, MembershipRole.OWNER, uuid4())
+
+
+@pytest.mark.asyncio
+async def test_accept_adds_membership():
+    org = make_org(is_personal=False)
+    owner = make_user()
+    invitee = make_user(email="carlos@empresa.com")
+    service, _ = _team(org)
+    created = await service.invite(
+        org.id, owner, MembershipRole.OWNER, invitee.email, MembershipRole.MEMBER
+    )
+
+    result = await service.accept(created.invitation.token, invitee)
+
+    assert result.organization.id == org.id
+    assert created.invitation.status == InvitationStatus.ACCEPTED
+    membership = await service.memberships.get(invitee.id, org.id)
+    assert membership is not None
+    assert membership.role == MembershipRole.MEMBER
+
+
+@pytest.mark.asyncio
+async def test_accept_is_idempotent_for_same_member():
+    org = make_org(is_personal=False)
+    owner = make_user()
+    invitee = make_user(email="carlos@empresa.com")
+    service, _ = _team(org)
+    created = await service.invite(
+        org.id, owner, MembershipRole.OWNER, invitee.email, MembershipRole.MEMBER
+    )
+    await service.accept(created.invitation.token, invitee)
+    events_after_first = len(service.audit.events)
+
+    result = await service.accept(created.invitation.token, invitee)
+
+    assert result.organization.id == org.id
+    assert result.role == MembershipRole.MEMBER
+    assert len(service.audit.events) == events_after_first
+    assert len([item for item in service.memberships.items if item.user_id == invitee.id]) == 1
+
+
+@pytest.mark.asyncio
+async def test_accept_rejects_wrong_email_after_accepted():
+    org = make_org(is_personal=False)
+    owner = make_user()
+    invitee = make_user(email="carlos@empresa.com")
+    other = make_user(email="otro@empresa.com")
+    service, _ = _team(org)
+    created = await service.invite(
+        org.id, owner, MembershipRole.OWNER, invitee.email, MembershipRole.MEMBER
+    )
+    await service.accept(created.invitation.token, invitee)
+
+    with pytest.raises(ForbiddenError, match="otro correo"):
+        await service.accept(created.invitation.token, other)

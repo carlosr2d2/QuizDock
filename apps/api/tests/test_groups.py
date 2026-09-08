@@ -20,6 +20,7 @@ from tests.fakes import (
     FakeSession,
     FakeTxRepo,
     FakeUserRepo,
+    FakeAuditService,
     make_exam,
     make_membership,
     make_org,
@@ -36,6 +37,7 @@ def _team(org) -> TeamService:
     service.memberships = FakeMembershipRepo()
     service.groups = FakeGroupRepo()
     service.invitations = FakeInvitationRepo()
+    service.audit = FakeAuditService()
     return service
 
 
@@ -52,6 +54,7 @@ def _exams(org) -> ExamService:
     service.billing = BillingService(session)
     service.billing.orgs = service.orgs
     service.billing.txs = FakeTxRepo()
+    service.audit = FakeAuditService()
     return service
 
 

@@ -9,6 +9,7 @@ from app.core.config import get_settings
 from app.core.files import display_name, document_kind, humanize_filename, is_pdf
 from app.core.jobs import enqueue
 from app.models import Document, DocumentStatus, Flashcard, MembershipRole
+from app.models.audit import AuditAction
 from app.repositories.content import DocumentRepository, ExamRepository, FlashcardRepository
 from app.schemas.content import (
     DocumentCreate,
@@ -18,6 +19,8 @@ from app.schemas.content import (
     FlashcardRead,
     flashcard_read,
 )
+from app.services.audit import AuditService
+from app.services.progress import as_utc_date
 from app.services.errors import NotFoundError
 from app.services.ingestion import extract_document, pdf_metadata_title
 from app.services.permissions import require_author
@@ -31,6 +34,7 @@ class DocumentService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repo = DocumentRepository(session)
+        self.audit = AuditService(session)
 
     async def list(self, organization_id: UUID) -> list[Document]:
         return await self.repo.list_for_org(organization_id)
@@ -66,6 +70,17 @@ class DocumentService:
         await self.repo.add(document)
         await self.session.flush()
         self._attach_upload_preview(document, dest)
+        title = display_name(document.display_title, document.filename)
+        await self.audit.record(
+            organization_id,
+            AuditAction.DOCUMENT_UPLOADED,
+            actor_user_id=owner_user_id,
+            actor_role=role,
+            target_type="document",
+            target_id=document.id,
+            summary=f"Subió «{title}»",
+            payload={"filename": filename, "title": title},
+        )
         await self.session.commit()
         await self.session.refresh(document)
         enqueue("documents.process", str(document.id))
@@ -100,6 +115,44 @@ class DocumentService:
         if document is None:
             raise NotFoundError("Document not found")
         return document
+
+    async def delete(
+        self,
+        document_id: UUID,
+        organization_id: UUID,
+        role: MembershipRole,
+        actor_id: UUID | None = None,
+    ) -> None:
+        require_author(role)
+        document = await self.get(document_id, organization_id)
+        title = display_name(document.display_title, document.filename)
+        self._unlink_stored(document.storage_key)
+        self._unlink_stored(document.cover_key)
+        await self.repo.delete(document)
+        await self.audit.record(
+            organization_id,
+            AuditAction.DOCUMENT_DELETED,
+            actor_user_id=actor_id,
+            actor_role=role,
+            target_type="document",
+            target_id=document_id,
+            summary=f"Eliminó «{title}»",
+            payload={"filename": document.filename, "title": title},
+        )
+        await self.session.commit()
+
+    def _unlink_stored(self, key: str | None) -> None:
+        if not key:
+            return
+        root = Path(settings.storage_dir).resolve()
+        path = (root / key).resolve()
+        if not path.is_relative_to(root):
+            return
+        try:
+            if path.is_file():
+                path.unlink()
+        except OSError:
+            pass
 
     async def process(self, document_id: UUID) -> None:
         document = await self.repo.get_by_id(document_id)
@@ -242,14 +295,17 @@ class FlashcardService:
         return decks
 
     async def progress(self, organization_id: UUID, owner_user_id: UUID) -> FlashcardProgress:
-        total, due, reviewed, last_at = await self.repo.progress_aggregates(
+        total, due, reviewed, last_at, mastered = await self.repo.progress_aggregates(
             organization_id, owner_user_id
         )
+        review_times = await self.repo.review_times(organization_id, owner_user_id)
         return FlashcardProgress(
             flashcard_count=total,
             flashcard_due=due,
             flashcard_reviewed=reviewed,
+            flashcard_mastered=mastered,
             flashcard_last_reviewed_at=last_at,
+            study_dates=[as_utc_date(value) for value in review_times],
         )
 
     async def create(

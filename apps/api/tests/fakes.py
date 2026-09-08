@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 from app.models import Invitation, Membership, MembershipRole, Organization, PasswordResetToken, PlanTier, User
 from app.models.billing import PaymentOrder, PaymentStatus
 from app.models.document import Document, DocumentStatus
-from app.models.exam import Exam, ExamAssignment, ExamKind, ExamStatus, Question
+from app.models.exam import Exam, ExamAssignment, ExamKind, ExamStatus, Question, QuestionKind
 from app.models.identity import InvitationStatus
 from app.models.mixins import utcnow
 from app.services.mail import OutboundEmail
@@ -39,6 +39,43 @@ class FakeSession:
 
     async def refresh(self, item: object) -> None:
         ensure_id(item)
+
+
+class FakeAuditService:
+    def __init__(self) -> None:
+        self.events: list[dict] = []
+
+    async def record(self, organization_id, action, **kwargs):
+        event = {
+            "organization_id": organization_id,
+            "action": action,
+            **kwargs,
+        }
+        self.events.append(event)
+        return event
+
+    async def list_events(self, organization_id, role, *, limit: int = 50, offset: int = 0):
+        from app.schemas.audit import AuditEventList
+
+        return AuditEventList(items=[], total=0, limit=limit, offset=offset)
+
+
+class FakeAuditRepo:
+    def __init__(self) -> None:
+        self.items: list = []
+
+    async def add(self, event):
+        ensure_id(event)
+        if getattr(event, "payload", None) is None:
+            event.payload = {}
+        self.items.append(event)
+        return event
+
+    async def list_for_org(self, organization_id: UUID, *, limit: int = 50, offset: int = 0):
+        rows = [item for item in self.items if item.organization_id == organization_id]
+        rows.sort(key=lambda item: item.created_at, reverse=True)
+        sliced = rows[offset : offset + limit]
+        return [(item, None, None) for item in sliced], len(rows)
 
 
 class FakeUserRepo:
@@ -102,6 +139,9 @@ class FakeMembershipRepo:
 
     async def get_with_user(self, user_id: UUID, organization_id: UUID) -> Membership | None:
         return await self.get(user_id, organization_id)
+
+    async def delete(self, membership: Membership) -> None:
+        self.items = [item for item in self.items if item is not membership and item.id != membership.id]
 
 
 class FakeGroupRepo:
@@ -347,6 +387,9 @@ class FakeDocumentRepo:
             if item.id in ids and item.organization_id == organization_id
         }
 
+    async def delete(self, document: Document) -> None:
+        self.by_id.pop(document.id, None)
+
 
 class FakeExamRepo:
     def __init__(self) -> None:
@@ -461,6 +504,75 @@ class FakeExamRepo:
             exam = next((row for row in self.exams if row.id == item.exam_id), None)
             rows.append((item, exam.title if exam else "Examen"))
         return rows
+
+    async def weak_exam_aggregates(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+        *,
+        limit: int = 8,
+    ) -> list[tuple[UUID, str, float, int]]:
+        grouped: dict[UUID, list[float]] = {}
+        for item in self.attempts:
+            if (
+                getattr(item, "organization_id", None) != organization_id
+                or getattr(item, "user_id", None) != user_id
+                or getattr(item, "completed_at", None) is None
+                or getattr(item, "score", None) is None
+            ):
+                continue
+            grouped.setdefault(item.exam_id, []).append(float(item.score))
+        rows: list[tuple[UUID, str, float, int]] = []
+        for exam_id, scores in grouped.items():
+            exam = next(
+                (
+                    row
+                    for row in self.exams
+                    if row.id == exam_id and row.organization_id == organization_id
+                ),
+                None,
+            )
+            if exam is None:
+                continue
+            rows.append((exam_id, exam.title, sum(scores) / len(scores), len(scores)))
+        rows.sort(key=lambda item: (item[2], -item[3]))
+        return rows[:limit]
+
+    async def questions_for_exams(
+        self, exam_ids: set[UUID], organization_id: UUID
+    ) -> list[Question]:
+        allowed = {
+            exam.id
+            for exam in self.exams
+            if exam.id in exam_ids and exam.organization_id == organization_id
+        }
+        seen: set[UUID] = set()
+        out: list[Question] = []
+        for exam in self.exams:
+            if exam.id not in allowed:
+                continue
+            for question in exam.questions or []:
+                if question.id in seen:
+                    continue
+                seen.add(question.id)
+                out.append(question)
+        for question in self.questions:
+            if question.exam_id not in allowed or question.id in seen:
+                continue
+            seen.add(question.id)
+            out.append(question)
+        return out
+
+    async def completed_at_times(
+        self, organization_id: UUID, user_id: UUID
+    ) -> list[datetime]:
+        return [
+            item.completed_at
+            for item in self.attempts
+            if getattr(item, "organization_id", None) == organization_id
+            and getattr(item, "user_id", None) == user_id
+            and getattr(item, "completed_at", None) is not None
+        ]
 
     async def org_progress_aggregates(
         self, organization_id: UUID
@@ -698,6 +810,30 @@ def make_exam(
     )
     exam.questions = []
     return exam
+
+
+def make_question(
+    exam_id: UUID,
+    *,
+    prompt: str = "¿Correcto?",
+    kind: QuestionKind = QuestionKind.SINGLE_CHOICE,
+    options: list[str] | None = None,
+    correct_index: int = 0,
+    correct_indices: list[int] | None = None,
+    position: int = 0,
+) -> Question:
+    return Question(
+        id=uuid4(),
+        exam_id=exam_id,
+        prompt=prompt,
+        kind=kind,
+        options=options or ["A", "B", "C", "D"],
+        correct_index=correct_index,
+        correct_indices=correct_indices if correct_indices is not None else [correct_index],
+        position=position,
+        created_at=utcnow(),
+        updated_at=utcnow(),
+    )
 
 
 def make_membership(

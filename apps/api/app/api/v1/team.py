@@ -1,10 +1,11 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import RequestContext, get_context, get_current_user, get_db, require_roles
 from app.models import MembershipRole, User
+from app.schemas.audit import AuditEventList
 from app.schemas.auth import OrganizationRead
 from app.schemas.content import MemberProgressRead, TeamAnalyticsRead
 from app.schemas.team import (
@@ -19,6 +20,7 @@ from app.schemas.team import (
     OrganizationCreate,
     TeamSnapshot,
 )
+from app.services.audit import AuditService
 from app.services.generation import ExamService
 from app.services.team import TeamService
 
@@ -92,7 +94,7 @@ async def revoke_invitation(
     ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    await TeamService(db).revoke(ctx.organization_id, ctx.role, invitation_id)
+    await TeamService(db).revoke(ctx.organization_id, ctx.role, invitation_id, actor_id=ctx.user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -132,6 +134,18 @@ async def team_analytics(
     return await ExamService(db).team_analytics(ctx.organization_id, ctx.role)
 
 
+@router.get("/organizations/current/audit", response_model=AuditEventList)
+async def team_audit(
+    ctx: RequestContext = Depends(get_context),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> AuditEventList:
+    return await AuditService(db).list_events(
+        ctx.organization_id, ctx.role, limit=limit, offset=offset
+    )
+
+
 @router.post("/organizations/current/groups", response_model=GroupRead, status_code=201)
 async def create_group(
     payload: GroupCreate,
@@ -150,7 +164,9 @@ async def rename_group(
     ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
     db: AsyncSession = Depends(get_db),
 ) -> GroupRead:
-    return await TeamService(db).rename_group(ctx.organization_id, ctx.role, group_id, payload.name)
+    return await TeamService(db).rename_group(
+        ctx.organization_id, ctx.role, group_id, payload.name, actor_id=ctx.user.id
+    )
 
 
 @router.delete(
@@ -163,7 +179,7 @@ async def delete_group(
     ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    await TeamService(db).delete_group(ctx.organization_id, ctx.role, group_id)
+    await TeamService(db).delete_group(ctx.organization_id, ctx.role, group_id, actor_id=ctx.user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -175,7 +191,7 @@ async def set_group_members(
     db: AsyncSession = Depends(get_db),
 ) -> GroupRead:
     return await TeamService(db).set_group_members(
-        ctx.organization_id, ctx.role, group_id, payload.user_ids
+        ctx.organization_id, ctx.role, group_id, payload.user_ids, actor_id=ctx.user.id
     )
 
 
@@ -187,7 +203,7 @@ async def add_group_members(
     db: AsyncSession = Depends(get_db),
 ) -> GroupRead:
     return await TeamService(db).add_group_members(
-        ctx.organization_id, ctx.role, group_id, payload.user_ids
+        ctx.organization_id, ctx.role, group_id, payload.user_ids, actor_id=ctx.user.id
     )
 
 
@@ -202,7 +218,9 @@ async def remove_group_member(
     ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    await TeamService(db).remove_group_member(ctx.organization_id, ctx.role, group_id, user_id)
+    await TeamService(db).remove_group_member(
+        ctx.organization_id, ctx.role, group_id, user_id, actor_id=ctx.user.id
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

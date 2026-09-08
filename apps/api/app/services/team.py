@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.text import slugify
 from app.models import Invitation, Membership, MembershipRole, Organization, PlanTier, User
+from app.models.audit import AuditAction
 from app.models.group import Group, GroupMember
 from app.models.identity import InvitationStatus
 from app.models.mixins import utcnow
@@ -28,6 +29,7 @@ from app.schemas.team import (
     MyInvitationRead,
     TeamSnapshot,
 )
+from app.services.audit import AuditService
 from app.services.errors import ConflictError, DomainError, ForbiddenError, NotFoundError
 from app.services.mail import MailError, Mailer, build_invite_email, get_mailer, invite_accept_url
 
@@ -53,6 +55,7 @@ class TeamService:
         self.invitations = InvitationRepository(session)
         self.groups = GroupRepository(session)
         self.mailer = mailer if mailer is not None else get_mailer()
+        self.audit = AuditService(session)
 
     async def create_organization(self, user: User, name: str) -> Organization:
         slug = await self._unique_slug(slugify(name) or "equipo")
@@ -67,6 +70,16 @@ class TeamService:
         await self.orgs.add(org)
         await self.memberships.add(
             Membership(user_id=user.id, organization_id=org.id, role=MembershipRole.OWNER)
+        )
+        await self._record(
+            org.id,
+            AuditAction.ORGANIZATION_CREATED,
+            actor_user_id=user.id,
+            actor_role=MembershipRole.OWNER,
+            target_type="organization",
+            target_id=org.id,
+            summary=f"Creó el equipo «{org.name}»",
+            payload={"name": org.name},
         )
         await self.session.commit()
         await self.session.refresh(user)
@@ -132,6 +145,16 @@ class TeamService:
             pending.invited_by_user_id = actor.id
             pending.expires_at = utcnow() + timedelta(days=INVITE_DAYS)
             pending.token = secrets.token_urlsafe(32)
+            await self._record(
+                organization_id,
+                AuditAction.MEMBER_INVITED,
+                actor_user_id=actor.id,
+                actor_role=actor_role,
+                target_type="invitation",
+                target_id=pending.id,
+                summary=f"Invitó a {email.lower()} como {role.value}",
+                payload={"email": email.lower(), "role": role.value},
+            )
             await self.session.commit()
             refreshed = await self.invitations.get(pending.id, organization_id)
             assert refreshed is not None
@@ -147,6 +170,16 @@ class TeamService:
             expires_at=utcnow() + timedelta(days=INVITE_DAYS),
         )
         await self.invitations.add(invitation)
+        await self._record(
+            organization_id,
+            AuditAction.MEMBER_INVITED,
+            actor_user_id=actor.id,
+            actor_role=actor_role,
+            target_type="invitation",
+            target_id=invitation.id,
+            summary=f"Invitó a {email.lower()} como {role.value}",
+            payload={"email": email.lower(), "role": role.value},
+        )
         await self.session.commit()
         created = await self.invitations.get(invitation.id, organization_id)
         assert created is not None
@@ -166,6 +199,16 @@ class TeamService:
             raise NotFoundError("Invitación no encontrada")
         if not await self._ensure_pending(invitation):
             raise DomainError("Solo se pueden reenviar invitaciones pendientes.")
+        await self._record(
+            organization_id,
+            AuditAction.MEMBER_INVITE_RESENT,
+            actor_user_id=actor.id,
+            actor_role=actor_role,
+            target_type="invitation",
+            target_id=invitation.id,
+            summary=f"Reenvió la invitación a {invitation.email}",
+            payload={"email": invitation.email, "role": invitation.role.value if hasattr(invitation.role, "value") else str(invitation.role)},
+        )
         return InviteOutcome(invitation=invitation, email_sent=self._deliver_invite(org, actor, invitation))
 
     async def revoke(
@@ -173,6 +216,7 @@ class TeamService:
         organization_id: UUID,
         actor_role: MembershipRole,
         invitation_id: UUID,
+        actor_id: UUID | None = None,
     ) -> None:
         org = await self._org(organization_id)
         self._require_manage(org, actor_role)
@@ -182,6 +226,16 @@ class TeamService:
         if invitation.status != InvitationStatus.PENDING:
             raise DomainError("Solo se pueden anular invitaciones pendientes.")
         invitation.status = InvitationStatus.REVOKED
+        await self._record(
+            organization_id,
+            AuditAction.MEMBER_INVITE_REVOKED,
+            actor_user_id=actor_id,
+            actor_role=actor_role,
+            target_type="invitation",
+            target_id=invitation.id,
+            summary=f"Anuló la invitación a {invitation.email}",
+            payload={"email": invitation.email},
+        )
         await self.session.commit()
 
     async def remove_member(
@@ -203,7 +257,19 @@ class TeamService:
         if actor_role != MembershipRole.OWNER and membership.role in MANAGE_ROLES:
             raise ForbiddenError("Solo el propietario puede quitar a un admin.")
         await self.groups.delete_user_from_org(organization_id, user_id)
+        person = await self.users.get_by_id(user_id)
+        email = person.email if person else str(user_id)
         await self.memberships.delete(membership)
+        await self._record(
+            organization_id,
+            AuditAction.MEMBER_REMOVED,
+            actor_user_id=actor_id,
+            actor_role=actor_role,
+            target_type="member",
+            target_id=user_id,
+            summary=f"Quitó a {email}",
+            payload={"email": email, "role": membership.role.value if hasattr(membership.role, "value") else str(membership.role)},
+        )
         await self.session.commit()
 
     async def preview(self, token: str) -> InvitationPublic:
@@ -239,12 +305,20 @@ class TeamService:
 
     async def accept(self, token: str, user: User) -> InvitationAcceptRead:
         invitation = await self._usable_or_public(token)
-        if not await self._ensure_pending(invitation):
-            raise DomainError("La invitación no es válida o caducó.")
         if invitation.email.lower() != user.email.lower():
             raise ForbiddenError("Esta invitación es para otro correo.")
 
         existing = await self.memberships.get(user.id, invitation.organization_id)
+        if invitation.status == InvitationStatus.ACCEPTED and existing is not None:
+            org = await self._org(invitation.organization_id)
+            return InvitationAcceptRead(
+                organization=OrganizationRead.model_validate(org),
+                role=existing.role,
+            )
+
+        if not await self._ensure_pending(invitation):
+            raise DomainError("La invitación no es válida o caducó.")
+
         if existing is None:
             await self.memberships.add(
                 Membership(
@@ -255,6 +329,16 @@ class TeamService:
             )
         invitation.status = InvitationStatus.ACCEPTED
         invitation.accepted_at = utcnow()
+        await self._record(
+            invitation.organization_id,
+            AuditAction.MEMBER_JOINED,
+            actor_user_id=user.id,
+            actor_role=invitation.role,
+            target_type="member",
+            target_id=user.id,
+            summary=f"{user.email} se unió al equipo",
+            payload={"email": user.email, "role": invitation.role.value if hasattr(invitation.role, "value") else str(invitation.role)},
+        )
         await self.session.commit()
         org = await self._org(invitation.organization_id)
         return InvitationAcceptRead(
@@ -292,6 +376,16 @@ class TeamService:
             created_by_user_id=actor_id,
         )
         await self.groups.add(group)
+        await self._record(
+            organization_id,
+            AuditAction.GROUP_CREATED,
+            actor_user_id=actor_id,
+            actor_role=actor_role,
+            target_type="group",
+            target_id=group.id,
+            summary=f"Creó el grupo «{cleaned}»",
+            payload={"name": cleaned},
+        )
         await self.session.commit()
         created = await self.groups.get(group.id, organization_id)
         assert created is not None
@@ -303,6 +397,7 @@ class TeamService:
         actor_role: MembershipRole,
         group_id: UUID,
         name: str,
+        actor_id: UUID | None = None,
     ) -> GroupRead:
         org = await self._org(organization_id)
         self._require_manage(org, actor_role)
@@ -314,20 +409,41 @@ class TeamService:
         if existing is not None and existing.id != group.id:
             raise ConflictError("Ya existe un grupo con ese nombre.")
         group.name = cleaned
+        await self._record(
+            organization_id,
+            AuditAction.GROUP_RENAMED,
+            actor_user_id=actor_id,
+            actor_role=actor_role,
+            target_type="group",
+            target_id=group.id,
+            summary=f"Renombró el grupo a «{cleaned}»",
+            payload={"name": cleaned},
+        )
         await self.session.commit()
         refreshed = await self.groups.get(group.id, organization_id)
         assert refreshed is not None
         return await self._group_read_fresh(refreshed, organization_id)
 
     async def delete_group(
-        self, organization_id: UUID, actor_role: MembershipRole, group_id: UUID
+        self, organization_id: UUID, actor_role: MembershipRole, group_id: UUID, actor_id: UUID | None = None
     ) -> None:
         org = await self._org(organization_id)
         self._require_manage(org, actor_role)
         group = await self.groups.get(group_id, organization_id)
         if group is None:
             raise NotFoundError("Grupo no encontrado")
+        name = group.name
         await self.groups.delete(group)
+        await self._record(
+            organization_id,
+            AuditAction.GROUP_DELETED,
+            actor_user_id=actor_id,
+            actor_role=actor_role,
+            target_type="group",
+            target_id=group_id,
+            summary=f"Eliminó el grupo «{name}»",
+            payload={"name": name},
+        )
         await self.session.commit()
 
     async def set_group_members(
@@ -336,6 +452,7 @@ class TeamService:
         actor_role: MembershipRole,
         group_id: UUID,
         user_ids: list[UUID],
+        actor_id: UUID | None = None,
     ) -> GroupRead:
         org = await self._org(organization_id)
         self._require_manage(org, actor_role)
@@ -349,6 +466,16 @@ class TeamService:
         if unknown:
             raise DomainError("Hay usuarios que no pertenecen a este workspace.")
         await self.groups.replace_members(group, organization_id, unique)
+        await self._record(
+            organization_id,
+            AuditAction.GROUP_MEMBERS_UPDATED,
+            actor_user_id=actor_id,
+            actor_role=actor_role,
+            target_type="group",
+            target_id=group.id,
+            summary=f"Actualizó integrantes de «{group.name}»",
+            payload={"name": group.name, "member_count": len(unique)},
+        )
         await self.session.commit()
         refreshed = await self.groups.get(group.id, organization_id)
         assert refreshed is not None
@@ -360,6 +487,7 @@ class TeamService:
         actor_role: MembershipRole,
         group_id: UUID,
         user_ids: list[UUID],
+        actor_id: UUID | None = None,
     ) -> GroupRead:
         org = await self._org(organization_id)
         self._require_manage(org, actor_role)
@@ -379,6 +507,16 @@ class TeamService:
             await self.groups.add_member(
                 GroupMember(organization_id=organization_id, group_id=group.id, user_id=user_id)
             )
+        await self._record(
+            organization_id,
+            AuditAction.GROUP_MEMBERS_UPDATED,
+            actor_user_id=actor_id,
+            actor_role=actor_role,
+            target_type="group",
+            target_id=group.id,
+            summary=f"Añadió integrantes a «{group.name}»",
+            payload={"name": group.name, "added": len(unique - current)},
+        )
         await self.session.commit()
         refreshed = await self.groups.get(group.id, organization_id)
         assert refreshed is not None
@@ -390,13 +528,25 @@ class TeamService:
         actor_role: MembershipRole,
         group_id: UUID,
         user_id: UUID,
+        actor_id: UUID | None = None,
     ) -> None:
         org = await self._org(organization_id)
         self._require_manage(org, actor_role)
         member = await self.groups.get_member(group_id, user_id, organization_id)
         if member is None:
             raise NotFoundError("Ese integrante no está en el grupo.")
+        group = await self.groups.get(group_id, organization_id)
         await self.groups.delete_member(member)
+        await self._record(
+            organization_id,
+            AuditAction.GROUP_MEMBERS_UPDATED,
+            actor_user_id=actor_id,
+            actor_role=actor_role,
+            target_type="group",
+            target_id=group_id,
+            summary=f"Quitó un integrante de «{group.name if group else group_id}»",
+            payload={"name": group.name if group else None, "removed_user_id": str(user_id)},
+        )
         await self.session.commit()
 
     def invitation_read(
@@ -509,3 +659,26 @@ class TeamService:
             candidate = f"{base}-{suffix}"
             suffix += 1
         return candidate
+
+    async def _record(
+        self,
+        organization_id: UUID,
+        action: AuditAction,
+        *,
+        actor_user_id: UUID | None,
+        actor_role: MembershipRole | None,
+        target_type: str,
+        target_id: UUID | None,
+        summary: str,
+        payload: dict | None = None,
+    ) -> None:
+        await self.audit.record(
+            organization_id,
+            action,
+            actor_user_id=actor_user_id,
+            actor_role=actor_role,
+            target_type=target_type,
+            target_id=target_id,
+            summary=summary,
+            payload=payload,
+        )

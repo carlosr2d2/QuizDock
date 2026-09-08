@@ -70,6 +70,9 @@ class DocumentRepository:
         await self.session.flush()
         return document
 
+    async def delete(self, document: Document) -> None:
+        await self.session.delete(document)
+
 
 class ExamRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -234,6 +237,70 @@ class ExamRepository:
             .limit(limit)
         )
         return [(attempt, title) for attempt, title in result.all()]
+
+    async def weak_exam_aggregates(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+        *,
+        limit: int = 8,
+    ) -> list[tuple[UUID, str, float, int]]:
+        result = await self.session.execute(
+            select(
+                Exam.id,
+                Exam.title,
+                func.avg(ExamAttempt.score),
+                func.count(ExamAttempt.id),
+            )
+            .join(Exam, Exam.id == ExamAttempt.exam_id)
+            .where(
+                ExamAttempt.organization_id == organization_id,
+                ExamAttempt.user_id == user_id,
+                ExamAttempt.completed_at.isnot(None),
+                Exam.organization_id == organization_id,
+            )
+            .group_by(Exam.id, Exam.title)
+            .order_by(func.avg(ExamAttempt.score).asc(), func.count(ExamAttempt.id).desc())
+            .limit(limit)
+        )
+        rows: list[tuple[UUID, str, float, int]] = []
+        for exam_id, title, average, count in result.all():
+            if average is None:
+                continue
+            rows.append((exam_id, title, float(average), int(count or 0)))
+        return rows
+
+    async def questions_for_exams(
+        self,
+        exam_ids: set[UUID],
+        organization_id: UUID,
+    ) -> list[Question]:
+        if not exam_ids:
+            return []
+        result = await self.session.execute(
+            select(Question)
+            .join(Exam, Exam.id == Question.exam_id)
+            .where(
+                Question.exam_id.in_(exam_ids),
+                Exam.organization_id == organization_id,
+            )
+            .order_by(Question.exam_id, Question.position)
+        )
+        return list(result.scalars().all())
+
+    async def completed_at_times(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+    ) -> list[datetime]:
+        result = await self.session.execute(
+            select(ExamAttempt.completed_at).where(
+                ExamAttempt.organization_id == organization_id,
+                ExamAttempt.user_id == user_id,
+                ExamAttempt.completed_at.isnot(None),
+            )
+        )
+        return [value for (value,) in result.all() if value is not None]
 
     async def org_progress_aggregates(
         self, organization_id: UUID
@@ -590,22 +657,44 @@ class FlashcardRepository:
         self,
         organization_id: UUID,
         owner_user_id: UUID,
-    ) -> tuple[int, int, int, datetime | None]:
+    ) -> tuple[int, int, int, datetime | None, int]:
         now = datetime.now(timezone.utc)
         due = or_(Flashcard.next_review_at.is_(None), Flashcard.next_review_at <= now)
+        mastered = Flashcard.interval_days >= 21
         result = await self.session.execute(
             select(
                 func.count(Flashcard.id),
                 func.coalesce(func.sum(case((due, 1), else_=0)), 0),
                 func.coalesce(func.sum(case((Flashcard.repetitions > 0, 1), else_=0)), 0),
                 func.max(Flashcard.last_reviewed_at),
+                func.coalesce(func.sum(case((mastered, 1), else_=0)), 0),
             ).where(
                 Flashcard.organization_id == organization_id,
                 Flashcard.owner_user_id == owner_user_id,
             )
         )
-        total, due_count, reviewed, last_at = result.one()
-        return int(total or 0), int(due_count or 0), int(reviewed or 0), last_at
+        total, due_count, reviewed, last_at, retained = result.one()
+        return (
+            int(total or 0),
+            int(due_count or 0),
+            int(reviewed or 0),
+            last_at,
+            int(retained or 0),
+        )
+
+    async def review_times(
+        self,
+        organization_id: UUID,
+        owner_user_id: UUID,
+    ) -> list[datetime]:
+        result = await self.session.execute(
+            select(Flashcard.last_reviewed_at).where(
+                Flashcard.organization_id == organization_id,
+                Flashcard.owner_user_id == owner_user_id,
+                Flashcard.last_reviewed_at.isnot(None),
+            )
+        )
+        return [value for (value,) in result.all() if value is not None]
 
     async def get(self, card_id: UUID, organization_id: UUID, owner_user_id: UUID) -> Flashcard | None:
         result = await self.session.execute(

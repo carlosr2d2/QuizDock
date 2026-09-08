@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
@@ -205,6 +205,20 @@ class ProgressAttempt(BaseModel):
     completed_at: datetime
 
 
+class WeakExamRead(BaseModel):
+    exam_id: UUID
+    exam_title: str
+    average_score: float
+    attempt_count: int
+
+
+class KindAccuracyRead(BaseModel):
+    kind: QuestionKind
+    correct: int
+    total: int
+    accuracy: float | None = None
+
+
 class ProgressRead(BaseModel):
     attempt_count: int
     exams_taken: int
@@ -212,10 +226,16 @@ class ProgressRead(BaseModel):
     best_score: float | None
     last_score: float | None
     recent: list[ProgressAttempt] = []
+    trend: list[ProgressAttempt] = []
+    weak_exams: list[WeakExamRead] = []
+    kind_accuracy: list[KindAccuracyRead] = []
+    study_streak_days: int = 0
     flashcard_count: int = 0
     flashcard_due: int = 0
     flashcard_reviewed: int = 0
+    flashcard_mastered: int = 0
     flashcard_last_reviewed_at: datetime | None = None
+    study_dates: list[date] = Field(default_factory=list, exclude=True)
 
 
 class MemberAssignmentProgress(BaseModel):
@@ -350,7 +370,9 @@ class FlashcardProgress(BaseModel):
     flashcard_count: int
     flashcard_due: int
     flashcard_reviewed: int
+    flashcard_mastered: int = 0
     flashcard_last_reviewed_at: datetime | None = None
+    study_dates: list[date] = Field(default_factory=list, exclude=True)
 
 
 class FlashcardReviewRequest(BaseModel):

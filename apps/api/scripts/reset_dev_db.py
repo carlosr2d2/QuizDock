@@ -31,6 +31,8 @@ engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=Tr
 Session = async_sessionmaker(engine, expire_on_commit=False)
 
 TABLES = [
+    "audit_events",
+    "payment_orders",
     "error_reports",
     "credit_transactions",
     "flashcards",
@@ -49,6 +51,60 @@ TABLES = [
     "memberships",
     "users",
     "organizations",
+]
+
+# Personal workspaces only — invite these into Demo empresa.
+EXTRA_SEED_USERS = [
+    ("user01@example.com", "Ana Gomez"),
+    ("user02@example.com", "Carlos Ruiz"),
+    ("user03@example.com", "Laura Pérez"),
+    ("user04@example.com", "Diego Torres"),
+    ("user05@example.com", "Sofía Herrera"),
+    ("user06@example.com", "Andrés Castro"),
+    ("user07@example.com", "Valentina López"),
+    ("user08@example.com", "Julián Morales"),
+    ("user09@example.com", "Camila Vargas"),
+    ("user10@example.com", "Mateo Rojas"),
+    ("user11@example.com", "Isabella Díaz"),
+    ("user12@example.com", "Santiago Gil"),
+    ("user13@example.com", "Mariana Ortiz"),
+    ("user14@example.com", "Nicolás Peña"),
+    ("user15@example.com", "Daniela Suárez"),
+    ("user16@example.com", "Felipe Ramírez"),
+    ("user17@example.com", "Paula Méndez"),
+    ("user18@example.com", "Sebastián Cruz"),
+    ("user19@example.com", "Lucía Navarro"),
+    ("user20@example.com", "Tomás Aguilar"),
+    ("user21@example.com", "Elena Cárdenas"),
+    ("user22@example.com", "Gabriel Pinto"),
+    ("user23@example.com", "Sara Molina"),
+    ("user24@example.com", "Emilio Ríos"),
+    ("user25@example.com", "Natalia Vega"),
+    ("user26@example.com", "Hugo Salazar"),
+    ("user27@example.com", "Clara Pardo"),
+    ("user28@example.com", "Iván Castaño"),
+    ("user29@example.com", "Jimena León"),
+    ("user30@example.com", "Pablo Duarte"),
+    ("user31@example.com", "Renata Silva"),
+    ("user32@example.com", "Óscar Beltrán"),
+    ("user33@example.com", "Alicia Romero"),
+    ("user34@example.com", "Bruno Espinosa"),
+    ("user35@example.com", "Carla Fuentes"),
+    ("user36@example.com", "David Quintero"),
+    ("user37@example.com", "Emma Delgado"),
+    ("user38@example.com", "Fernando Mora"),
+    ("user39@example.com", "Gabriela Nieto"),
+    ("user40@example.com", "Héctor Palacios"),
+    ("user41@example.com", "Inés Cabrera"),
+    ("user42@example.com", "Jorge Pineda"),
+    ("user43@example.com", "Karina Soto"),
+    ("user44@example.com", "Luis Arango"),
+    ("user45@example.com", "Mónica Bustos"),
+    ("user46@example.com", "Noel Cifuentes"),
+    ("user47@example.com", "Olga Franco"),
+    ("user48@example.com", "Pedro Ibarra"),
+    ("user49@example.com", "Rocío Sandoval"),
+    ("user50@example.com", "Simón Valdés"),
 ]
 
 
@@ -136,6 +192,46 @@ async def seed(session, email: str, password: str, full_name: str, credits: int)
             balance_after=credits,
         )
     )
+
+    extra_hash = hash_password(password)
+    bonus = settings.signup_bonus_credits
+    for index, (extra_email, extra_name) in enumerate(EXTRA_SEED_USERS, start=1):
+        personal = Organization(
+            name=f"{extra_name} workspace",
+            slug=f"user-{index:02d}",
+            plan=PlanTier.FREE,
+            is_personal=True,
+            credit_balance=bonus,
+            billing_country="CO",
+        )
+        session.add(personal)
+        await session.flush()
+        extra = User(
+            email=extra_email,
+            hashed_password=extra_hash,
+            full_name=extra_name,
+            locale="es",
+            personal_organization_id=personal.id,
+        )
+        session.add(extra)
+        await session.flush()
+        session.add(
+            Membership(
+                user_id=extra.id,
+                organization_id=personal.id,
+                role=MembershipRole.OWNER,
+            )
+        )
+        session.add(
+            CreditTransaction(
+                organization_id=personal.id,
+                user_id=extra.id,
+                amount=bonus,
+                reason="dev_seed",
+                balance_after=bonus,
+            )
+        )
+
     await session.commit()
     await session.refresh(user)
     return user
@@ -165,10 +261,13 @@ async def main() -> None:
     await engine.dispose()
 
     print("Database reset.")
-    print(f"  email:    {user.email}")
+    print(f"  owner:    {user.email}")
     print(f"  password: {args.password}")
     print(f"  credits:  {args.credits}")
+    print(f"  extras:   {len(EXTRA_SEED_USERS)} users (personal workspaces only, same password)")
     print("  login:    http://localhost:3000/login")
+    for extra_email, extra_name in EXTRA_SEED_USERS:
+        print(f"  {extra_email}  {extra_name}")
 
 
 if __name__ == "__main__":

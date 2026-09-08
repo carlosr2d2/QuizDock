@@ -54,7 +54,9 @@ export function Sidebar() {
   const selectedOrgId =
     orgId ?? me.data?.personal_organization_id ?? me.data?.memberships[0]?.organization_id ?? null;
   const currentOrg = me.data?.memberships.find((item) => item.organization_id === selectedOrgId)?.organization;
+  const currentRole = me.data?.memberships.find((item) => item.organization_id === selectedOrgId)?.role;
   const isPersonal = currentOrg?.is_personal !== false;
+  const canViewAudit = currentRole === "owner" || currentRole === "admin" || currentRole === "auditor";
   const canCreateTeam =
     Boolean(me.data) &&
     isPersonal &&
@@ -77,6 +79,7 @@ export function Sidebar() {
               { href: "/team/analytics", label: t("nav.analytics") },
               { href: "/team/groups", label: t("nav.groups") },
               { href: "/team/invite", label: t("nav.invite") },
+              ...(canViewAudit ? [{ href: "/team/audit", label: t("nav.audit") }] : []),
             ],
           },
         ]),

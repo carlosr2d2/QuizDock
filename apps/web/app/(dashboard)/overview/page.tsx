@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 
 import { AttemptRow } from "@/components/attempt-row";
+import { PersonalInsights } from "@/components/personal-insights";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
@@ -148,7 +149,7 @@ export default function OverviewPage() {
         <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Stat title={t("overview.due")} value={snapshot?.flashcard_due ?? 0} href="/flashcards" loading={progress.isLoading} />
           <Stat title={t("overview.reviewed")} value={snapshot?.flashcard_reviewed ?? 0} href="/flashcards" loading={progress.isLoading} />
-          <Stat title={t("overview.inDeck")} value={snapshot?.flashcard_count ?? 0} href="/flashcards" loading={progress.isLoading} />
+          <Stat title={t("overview.mastered")} value={snapshot?.flashcard_mastered ?? 0} href="/flashcards" loading={progress.isLoading} />
           <Stat
             title={t("overview.lastReview")}
             value={
@@ -183,8 +184,20 @@ export default function OverviewPage() {
           <Stat title={t("overview.average")} value={formatScore(snapshot?.average_score)} href="/exams" loading={progress.isLoading} />
           <Stat title={t("overview.best")} value={formatScore(snapshot?.best_score)} href="/exams" loading={progress.isLoading} />
           <Stat title={t("overview.lastScore")} value={formatScore(snapshot?.last_score)} href="/exams" loading={progress.isLoading} />
+          <Stat
+            title={t("overview.streak")}
+            value={
+              snapshot?.study_streak_days
+                ? t("overview.streakDays", { count: snapshot.study_streak_days })
+                : "—"
+            }
+            href="/exams"
+            loading={progress.isLoading}
+          />
         </div>
       </div>
+
+      {!progress.isLoading && snapshot ? <PersonalInsights progress={snapshot} /> : null}
 
       {progress.isLoading ? (
         <Loader label={t("overview.loadingActivity")} className="py-6" />

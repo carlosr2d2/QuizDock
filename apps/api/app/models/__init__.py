@@ -1,3 +1,4 @@
+from app.models.audit import AuditAction, AuditEvent
 from app.models.billing import CreditTransaction, PaymentOrder, PaymentStatus
 from app.models.chunk import DocumentChunk
 from app.models.document import Document, DocumentStatus
@@ -26,6 +27,8 @@ from app.models.job import GenerationJob
 from app.models.support import ErrorReport
 
 __all__ = [
+    "AuditAction",
+    "AuditEvent",
     "CreditTransaction",
     "PaymentOrder",
     "PaymentStatus",

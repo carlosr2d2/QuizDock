@@ -2,7 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { BookOpen, Layers } from "lucide-react";
+import Link from "next/link";
+import { BookOpen, Layers, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { DocumentCover } from "@/components/document-cover";
@@ -23,6 +24,7 @@ import type { CreditBalance, Document, Exam, GenerationJob, User } from "@/types
 const MIN_QUESTIONS = 1;
 const MAX_QUESTIONS = 50;
 const CREDIT_PER_QUESTION = 1;
+const FLASHCARD_COST = 12;
 const QUESTION_PRESETS = [5, 10, 15, 20, 30];
 
 export default function DocumentsPage() {
@@ -115,7 +117,7 @@ export default function DocumentsPage() {
     mutationFn: (documentId: string) =>
       apiFetch<GenerationJob>("/api/v1/flashcards/generate", {
         method: "POST",
-        body: { document_id: documentId, card_count: 12 },
+        body: { document_id: documentId, card_count: FLASHCARD_COST },
       }),
     onSuccess: (job) => {
       queryClient.invalidateQueries({ queryKey: ["credits"] });
@@ -124,11 +126,22 @@ export default function DocumentsPage() {
     onError: (error: Error) => setActionError(error.message),
   });
 
-  const busyId = generateExam.variables?.documentId ?? generateCards.variables ?? null;
+  const remove = useMutation({
+    mutationFn: (documentId: string) =>
+      apiFetch<void>(`/api/v1/documents/${documentId}`, { method: "DELETE" }),
+    onSuccess: (_result, documentId) => {
+      if (examDoc?.id === documentId) setExamDoc(null);
+      void queryClient.invalidateQueries({ queryKey: ["documents"] });
+    },
+    onError: (error: Error) => setActionError(error.message),
+  });
+
+  const busyId = generateExam.variables?.documentId ?? generateCards.variables ?? remove.variables ?? null;
   const balance = credits.data?.balance ?? 0;
   const examCost = questionCount * CREDIT_PER_QUESTION;
   const examCountValid = questionCount >= MIN_QUESTIONS && questionCount <= MAX_QUESTIONS;
   const canAffordExam = examCountValid && examCost <= balance;
+  const canAffordCards = FLASHCARD_COST <= balance;
 
   return (
     <div className="space-y-8">
@@ -141,7 +154,12 @@ export default function DocumentsPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               {canAuthor
                 ? t("documents.authorHint", { balance })
-                : t("documents.memberHint")}
+                : t("documents.memberHint")}{" "}
+              {canAuthor ? (
+                <Link href="/account" className="font-medium text-accent hover:underline">
+                  {t("documents.buyCredits")}
+                </Link>
+              ) : null}
             </p>
           )}
         </div>
@@ -230,7 +248,10 @@ export default function DocumentsPage() {
               </p>
               {examCountValid && !canAffordExam ? (
                 <p className="text-sm text-destructive">
-                  {t("documents.notEnough", { count: questionCount })}
+                  {t("documents.notEnough", { count: questionCount })}{" "}
+                  <Link href="/account" className="font-medium underline">
+                    {t("documents.buyCredits")}
+                  </Link>
                 </p>
               ) : null}
             </div>
@@ -326,7 +347,7 @@ export default function DocumentsPage() {
                       size="sm"
                       variant="outline"
                       className="border-accent/40 text-accent hover:bg-accent/10 hover:text-accent"
-                      disabled={busyId === doc.id}
+                      disabled={busyId === doc.id || !canAffordCards}
                       loading={generateCards.isPending && generateCards.variables === doc.id}
                       onClick={() => {
                         setActionError(null);
@@ -337,6 +358,23 @@ export default function DocumentsPage() {
                       {t("documents.flashcardsCost")}
                     </Button>
                   </>
+                ) : null}
+                {canAuthor ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busyId === doc.id}
+                    loading={remove.isPending && remove.variables === doc.id}
+                    onClick={() => {
+                      const title = doc.title || doc.filename;
+                      if (!window.confirm(t("documents.deleteConfirm", { title }))) return;
+                      setActionError(null);
+                      remove.mutate(doc.id);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {t("documents.delete")}
+                  </Button>
                 ) : null}
               </div>
             </li>
