@@ -24,6 +24,7 @@ out/
 # Env & secrets
 .env
 .env.local
+.env.staging
 .env.*.local
 !.env.example
 

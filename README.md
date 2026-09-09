@@ -31,6 +31,10 @@ docker compose up --build
 
 La API aplica `alembic upgrade head` al arrancar.
 
+## Staging
+
+Un VPS con Docker, Caddy (HTTPS) y el mismo stack (web, API, worker, Postgres, Redis). Guía: [`deploy/README.md`](deploy/README.md).
+
 ## Reset de desarrollo
 
 Borra todos los datos de negocio (usuarios, documentos, exámenes, créditos) y crea un usuario de prueba con 10.000 créditos:

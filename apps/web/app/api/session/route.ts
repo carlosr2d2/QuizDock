@@ -4,6 +4,7 @@ const COOKIE = "qd_token";
 const MAX_AGE = 60 * 60 * 24 * 7;
 
 function applySessionCookie(response: NextResponse, value: string | null) {
+  const secure = process.env.NODE_ENV === "production";
   if (value) {
     response.cookies.set({
       name: COOKIE,
@@ -12,6 +13,7 @@ function applySessionCookie(response: NextResponse, value: string | null) {
       maxAge: MAX_AGE,
       sameSite: "lax",
       httpOnly: true,
+      secure,
     });
   } else {
     response.cookies.set({
@@ -21,6 +23,7 @@ function applySessionCookie(response: NextResponse, value: string | null) {
       maxAge: 0,
       sameSite: "lax",
       httpOnly: true,
+      secure,
     });
   }
   return response;

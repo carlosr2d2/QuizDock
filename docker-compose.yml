@@ -108,6 +108,7 @@ services:
   web:
     build:
       context: ./apps/web
+      target: dev
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000

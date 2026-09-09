@@ -1,0 +1,23 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$STAGING_SITE} {
+	encode gzip zstd
+
+	request_body {
+		max_size 50MB
+	}
+
+	handle /health {
+		reverse_proxy api:8000
+	}
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}
