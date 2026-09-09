@@ -61,8 +61,6 @@ class OrganizationRead(ORMModel):
     slug: str
     plan: PlanTier
     is_personal: bool
-    credit_balance: int
-    billing_country: str
 
 
 class MembershipRead(ORMModel):

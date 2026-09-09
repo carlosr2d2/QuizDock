@@ -52,15 +52,16 @@ export default function DocumentsPage() {
         : false;
     },
   });
-  const credits = useQuery({
-    queryKey: ["credits"],
-    queryFn: () => apiFetch<CreditBalance>("/api/v1/billing/credits"),
-  });
   const me = useQuery({
     queryKey: ["me"],
     queryFn: () => apiFetch<User>("/api/v1/auth/me"),
   });
   const canAuthor = canCreateContent(me.data);
+  const credits = useQuery({
+    queryKey: ["credits"],
+    queryFn: () => apiFetch<CreditBalance>("/api/v1/billing/credits"),
+    enabled: canAuthor,
+  });
 
   const upload = useMutation({
     mutationFn: async (file: File) => {

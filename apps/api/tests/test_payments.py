@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.models import MembershipRole, PaymentStatus
+from app.models import MembershipRole, PaymentStatus, PlanTier
 from app.services.errors import DomainError, ForbiddenError
 from app.services.payments.checkout import CheckoutService
 from app.services.payments.port import CheckoutRequest, CheckoutSession, GatewayEventStatus, PaymentEvent
@@ -77,6 +77,11 @@ async def test_colombia_prefers_wompi_over_stripe():
     assert [item["id"] for item in catalog["providers"]][0] == "wompi"
     starter = next(item for item in catalog["packs"] if item["id"] == "starter")
     assert {price["provider"] for price in starter["prices"]} >= {"wompi", "stripe", "simulated"}
+    individual = next(item for item in catalog["plans"] if item["id"] == "individual")
+    assert individual["available"] is True
+    assert individual["monthly_credits"] == 80
+    team = next(item for item in catalog["plans"] if item["id"] == "team")
+    assert team["available"] is False
 
 
 @pytest.mark.asyncio
@@ -91,7 +96,6 @@ async def test_us_prefers_stripe():
 @pytest.mark.asyncio
 async def test_local_provider_is_offered_only_in_its_country(monkeypatch):
     from app.services.payments import catalog as catalog_mod
-    from app.services.payments import checkout as checkout_mod
     from app.services.payments.catalog import CreditPack
     from app.services.payments.port import Money
 
@@ -111,7 +115,6 @@ async def test_local_provider_is_offered_only_in_its_country(monkeypatch):
     )
     monkeypatch.setattr(catalog_mod, "PACKS", packs)
     monkeypatch.setattr(catalog_mod, "PACKS_BY_ID", {pack.id: pack for pack in packs})
-    monkeypatch.setattr(checkout_mod, "PACKS", packs)
 
     org_co = make_org(billing_country="CO")
     org_us = make_org(billing_country="US")
@@ -190,6 +193,80 @@ async def test_simulate_checkout_adds_credits():
     completed = await service.simulate(org.id, user, MembershipRole.OWNER, order.id)
     assert completed.status == PaymentStatus.COMPLETED
     assert org.credit_balance == 50
+
+
+@pytest.mark.asyncio
+async def test_personal_workspace_cannot_buy_team_plan():
+    org = make_org(is_personal=True)
+    user = make_user()
+    service = _service(org)
+    with pytest.raises(DomainError, match="equipo"):
+        await service.start_checkout(org.id, user, MembershipRole.OWNER, None, "simulated", plan_id="team")
+
+
+@pytest.mark.asyncio
+async def test_team_workspace_cannot_buy_individual_plan():
+    org = make_org(is_personal=False)
+    user = make_user()
+    service = _service(org)
+    with pytest.raises(DomainError, match="personal"):
+        await service.start_checkout(
+            org.id, user, MembershipRole.OWNER, None, "simulated", plan_id="individual"
+        )
+
+
+@pytest.mark.asyncio
+async def test_simulate_plan_sets_subscription_and_credits():
+    org = make_org(credit_balance=10, is_personal=True, plan=PlanTier.FREE)
+    user = make_user()
+    service = _service(org)
+    order = await service.start_checkout(
+        org.id, user, MembershipRole.OWNER, None, "simulated", plan_id="individual"
+    )
+    assert order.kind == "plan"
+    assert order.credits == 80
+    completed = await service.simulate(org.id, user, MembershipRole.OWNER, order.id)
+    assert completed.status == PaymentStatus.COMPLETED
+    assert org.plan == PlanTier.INDIVIDUAL
+    assert org.plan_sku == "individual"
+    assert org.plan_renews_at is not None
+    assert org.credit_balance == 90
+
+
+@pytest.mark.asyncio
+async def test_subscription_renews_credits_when_period_elapsed():
+    from datetime import timedelta
+
+    from app.models.mixins import utcnow
+
+    org = make_org(
+        credit_balance=5,
+        is_personal=True,
+        plan=PlanTier.INDIVIDUAL,
+        plan_sku="individual",
+        plan_renews_at=utcnow() - timedelta(days=1),
+    )
+    service = _service(org)
+    balance = await service.billing.get_balance(org.id)
+    assert balance.balance == 85
+    assert balance.plan == "individual"
+    assert org.plan_renews_at > utcnow()
+
+
+@pytest.mark.asyncio
+async def test_cancel_subscription_keeps_credits():
+    org = make_org(
+        credit_balance=90,
+        is_personal=True,
+        plan=PlanTier.INDIVIDUAL,
+        plan_sku="individual",
+    )
+    service = _service(org)
+    catalog = await service.cancel_subscription(org.id, MembershipRole.OWNER)
+    assert org.plan == PlanTier.FREE
+    assert org.plan_sku is None
+    assert org.credit_balance == 90
+    assert catalog["subscription"]["cancelable"] is False
 
 
 def test_stripe_signature_roundtrip():

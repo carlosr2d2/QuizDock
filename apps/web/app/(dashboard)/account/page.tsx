@@ -14,12 +14,13 @@ import { Loader, PageLoader, Skeleton } from "@/components/ui/loader";
 import { apiFetch } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/provider";
 import { canCreateContent } from "@/lib/permissions";
-import { formatDateTime, formatMoney } from "@/lib/utils";
+import { formatDate, formatDateTime, formatMoney } from "@/lib/utils";
 import type {
   BillingCatalog,
   CreditBalance,
   CreditTransaction,
   PaymentOrder,
+  SubscriptionPlan,
   User,
 } from "@/types/api";
 
@@ -36,10 +37,23 @@ function providerLabel(
   return catalog?.providers.find((item) => item.id === id)?.label ?? id;
 }
 
-function packLabel(id: string, t: (key: string) => string) {
-  const key = `account.pack${id.charAt(0).toUpperCase()}${id.slice(1)}`;
+function camelSku(id: string) {
+  return id
+    .split("_")
+    .map((part, index) => (index === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1)))
+    .join("");
+}
+
+function skuLabel(kind: string, id: string, t: (key: string) => string) {
+  const camel = camelSku(id);
+  const prefix = kind === "plan" ? "account.plan" : "account.pack";
+  const key = `${prefix}${camel.charAt(0).toUpperCase()}${camel.slice(1)}`;
   const label = t(key);
   return label === key ? id : label;
+}
+
+function packLabel(id: string, t: (key: string) => string) {
+  return skuLabel("pack", id, t);
 }
 
 function AccountPageInner() {
@@ -58,24 +72,27 @@ function AccountPageInner() {
     queryKey: ["me"],
     queryFn: () => apiFetch<User>("/api/v1/auth/me"),
   });
+  const canBuy = canCreateContent(me.data);
   const credits = useQuery({
     queryKey: ["credits"],
     queryFn: () => apiFetch<CreditBalance>("/api/v1/billing/credits"),
+    enabled: canBuy,
   });
   const catalog = useQuery({
     queryKey: ["billing-catalog"],
     queryFn: () => apiFetch<BillingCatalog>("/api/v1/billing/catalog"),
+    enabled: canBuy,
   });
   const orders = useQuery({
     queryKey: ["billing-orders"],
     queryFn: () => apiFetch<PaymentOrder[]>("/api/v1/billing/orders"),
+    enabled: canBuy,
   });
   const transactions = useQuery({
     queryKey: ["billing-transactions"],
     queryFn: () => apiFetch<CreditTransaction[]>("/api/v1/billing/transactions"),
+    enabled: canBuy,
   });
-
-  const canBuy = canCreateContent(me.data);
 
   useEffect(() => {
     if (me.data?.full_name) setName(me.data.full_name);
@@ -85,6 +102,7 @@ function AccountPageInner() {
     const payment = searchParams.get("payment");
     if (payment === "success") setNotice(t("account.paymentSuccess"));
     if (payment === "cancel") setNotice(t("account.paymentCancel"));
+    if (searchParams.get("workspace") === "created") setNotice(t("account.workspaceCreated"));
   }, [searchParams, t]);
 
   const saveProfile = useMutation({
@@ -128,7 +146,7 @@ function AccountPageInner() {
   });
 
   const checkout = useMutation({
-    mutationFn: (input: { pack_id: string; provider: string }) =>
+    mutationFn: (input: { pack_id?: string; plan_id?: string; provider: string }) =>
       apiFetch<PaymentOrder>("/api/v1/billing/checkout", { method: "POST", body: input }),
     onSuccess: async (order) => {
       if (order.provider === "simulated") {
@@ -136,12 +154,26 @@ function AccountPageInner() {
           method: "POST",
         });
         void queryClient.invalidateQueries({ queryKey: ["credits"] });
+        void queryClient.invalidateQueries({ queryKey: ["billing-catalog"] });
         void queryClient.invalidateQueries({ queryKey: ["billing-orders"] });
         void queryClient.invalidateQueries({ queryKey: ["billing-transactions"] });
+        void queryClient.invalidateQueries({ queryKey: ["me"] });
         if (completed.status === "completed") setNotice(t("account.paymentSuccess"));
         return;
       }
       if (order.checkout_url) window.location.assign(order.checkout_url);
+    },
+    onError: (error: Error) => setActionError(error.message),
+  });
+
+  const cancelPlan = useMutation({
+    mutationFn: () => apiFetch<BillingCatalog>("/api/v1/billing/subscription/cancel", { method: "POST" }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["billing-catalog"], data);
+      void queryClient.invalidateQueries({ queryKey: ["credits"] });
+      void queryClient.invalidateQueries({ queryKey: ["me"] });
+      setNotice(t("account.saved"));
+      setActionError(null);
     },
     onError: (error: Error) => setActionError(error.message),
   });
@@ -155,8 +187,10 @@ function AccountPageInner() {
         await apiFetch<PaymentOrder>(`/api/v1/billing/orders/${orderId}/simulate`, { method: "POST" });
         setNotice(t("account.paymentSuccess"));
         void queryClient.invalidateQueries({ queryKey: ["credits"] });
+        void queryClient.invalidateQueries({ queryKey: ["billing-catalog"] });
         void queryClient.invalidateQueries({ queryKey: ["billing-orders"] });
         void queryClient.invalidateQueries({ queryKey: ["billing-transactions"] });
+        void queryClient.invalidateQueries({ queryKey: ["me"] });
         router.replace("/account?payment=success");
       } catch (error) {
         setActionError(error instanceof Error ? error.message : t("error.unexpected"));
@@ -164,7 +198,7 @@ function AccountPageInner() {
     })();
   }, [queryClient, router, searchParams, t]);
 
-  const loadError = me.error ?? credits.error ?? catalog.error ?? orders.error ?? transactions.error;
+  const loadError = me.error ?? (canBuy ? credits.error ?? catalog.error ?? orders.error ?? transactions.error : null);
 
   return (
     <div className="space-y-8">
@@ -258,6 +292,7 @@ function AccountPageInner() {
         </form>
       </Card>
 
+      {canBuy ? (
       <Card>
         <CardTitle>{t("account.creditsTitle")}</CardTitle>
         <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -273,8 +308,28 @@ function AccountPageInner() {
           </p>
         </div>
         <CardDescription className="mt-2">{t("account.creditsBody")}</CardDescription>
-        {canBuy ? (
-          <label className="mt-4 block max-w-xs">
+        {catalog.data?.subscription ? (
+          <p className="mt-3 text-sm">
+            <span className="font-medium">{t("account.planCurrent")}: </span>
+            {skuLabel("plan", catalog.data.subscription.sku ?? catalog.data.subscription.plan, t) ||
+              t("account.planFree")}
+            {catalog.data.subscription.renews_at
+              ? ` · ${t("account.planRenews", { date: formatDate(catalog.data.subscription.renews_at, locale) })}`
+              : null}
+          </p>
+        ) : null}
+        {catalog.data?.subscription?.cancelable ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-3"
+            loading={cancelPlan.isPending}
+            onClick={() => cancelPlan.mutate()}
+          >
+            {cancelPlan.isPending ? t("account.canceling") : t("account.cancelPlan")}
+          </Button>
+        ) : null}
+        <label className="mt-4 block max-w-xs">
             <span className="mb-1 block text-sm font-medium">{t("account.country")}</span>
             <select
               className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
@@ -290,10 +345,34 @@ function AccountPageInner() {
             </select>
             <p className="mt-2 text-xs text-muted-foreground">{t("account.countryHint")}</p>
           </label>
-        ) : (
-          <p className="mt-4 text-sm text-muted-foreground">{t("account.memberHint")}</p>
-        )}
       </Card>
+      ) : null}
+
+      {canBuy ? (
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">{t("account.planTitle")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t("account.planBody")}</p>
+          {catalog.isLoading ? (
+            <Loader label={t("common.loading")} className="mt-4" />
+          ) : !catalog.data?.providers.length ? (
+            <p className="mt-4 text-sm text-muted-foreground">{t("account.noProviders")}</p>
+          ) : (
+            <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+              {(catalog.data.plans ?? []).map((plan) => (
+                <PlanCard
+                  key={plan.id}
+                  plan={plan}
+                  catalog={catalog.data}
+                  currentSku={catalog.data?.subscription?.sku}
+                  checkout={checkout}
+                  t={t}
+                  locale={locale}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {canBuy ? (
         <div>
@@ -341,6 +420,8 @@ function AccountPageInner() {
         </div>
       ) : null}
 
+      {canBuy ? (
+        <>
       <Card>
         <CardTitle>{t("account.orders")}</CardTitle>
         {orders.isLoading ? (
@@ -351,7 +432,8 @@ function AccountPageInner() {
               <li key={order.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
                 <div>
                   <p className="text-sm font-medium">
-                    {packLabel(order.pack_id, t)} · {providerLabel(order.provider, t, catalog.data)}
+                    {skuLabel(order.kind === "plan" ? "plan" : "pack", order.pack_id, t)} ·{" "}
+                    {providerLabel(order.provider, t, catalog.data)}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {t("account.creditsCount", { count: order.credits })} ·{" "}
@@ -389,7 +471,80 @@ function AccountPageInner() {
           <p className="mt-4 text-sm text-muted-foreground">{t("account.noMovements")}</p>
         )}
       </Card>
+        </>
+      ) : null}
     </div>
+  );
+}
+
+function PlanCard({
+  plan,
+  catalog,
+  currentSku,
+  checkout,
+  t,
+  locale,
+}: {
+  plan: SubscriptionPlan;
+  catalog: BillingCatalog | undefined;
+  currentSku: string | null | undefined;
+  checkout: {
+    isPending: boolean;
+    variables?: { pack_id?: string; plan_id?: string; provider: string };
+    mutate: (input: { plan_id: string; provider: string }) => void;
+  };
+  t: (key: string, vars?: Record<string, string | number>) => string;
+  locale: "es" | "en";
+}) {
+  const isCurrent = currentSku === plan.id;
+  const seats =
+    plan.seats == null
+      ? t("account.planSeatsUnlimited")
+      : plan.seats <= 1
+        ? null
+        : t("account.planSeats", { count: plan.seats });
+  return (
+    <Card className={isCurrent ? "border-accent" : undefined}>
+      <div className="flex items-start justify-between gap-2">
+        <CardTitle>{skuLabel("plan", plan.id, t)}</CardTitle>
+        {isCurrent ? <Badge>{t("account.planCurrent")}</Badge> : null}
+      </div>
+      <CardDescription>
+        {t("account.planMonthly", { count: plan.monthly_credits })}
+        {seats ? ` · ${seats}` : ""}
+      </CardDescription>
+      {!plan.available ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          {plan.personal_only ? t("account.planUnavailablePersonal") : t("account.planUnavailableTeam")}
+        </p>
+      ) : (
+        <div className="mt-4 space-y-2">
+          {plan.prices.map((price) => {
+            const provider = catalog?.providers.find((item) => item.id === price.provider);
+            return (
+              <Button
+                key={`${plan.id}-${price.provider}`}
+                type="button"
+                variant={provider?.recommended ? "primary" : "outline"}
+                className="w-full justify-between"
+                loading={
+                  checkout.isPending &&
+                  checkout.variables?.plan_id === plan.id &&
+                  checkout.variables?.provider === price.provider
+                }
+                onClick={() => checkout.mutate({ plan_id: plan.id, provider: price.provider })}
+              >
+                <span>
+                  {t("account.payWith", { provider: providerLabel(price.provider, t, catalog) })}
+                  {provider?.recommended ? ` · ${t("account.recommended")}` : ""}
+                </span>
+                <span>{formatMoney(price.amount, price.currency, locale)}</span>
+              </Button>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 }
 

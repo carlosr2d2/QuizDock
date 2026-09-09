@@ -4,6 +4,7 @@ from app.core.config import get_settings
 from app.core.security import create_access_token, decode_token, hash_password, verify_password
 from app.core.text import slugify
 from app.models import MembershipRole
+from app.schemas.auth import OrganizationRead
 from app.services.auth import AuthError, AuthService
 from tests.fakes import FakeMembershipRepo, FakeOrgRepo, FakeSession, FakeUserRepo, make_org, make_user
 
@@ -49,6 +50,14 @@ def test_slugify_normalizes_names():
     assert slugify("Ana Gomez") == "ana-gomez"
     assert slugify("Hello--World") == "hello-world"
     assert slugify("   ") == "workspace"
+
+
+def test_organization_payload_omits_billing_fields():
+    org = make_org(credit_balance=1050, billing_country="CO")
+    payload = OrganizationRead.model_validate(org).model_dump()
+    assert "credit_balance" not in payload
+    assert "billing_country" not in payload
+    assert payload["name"] == org.name
 
 
 @pytest.mark.asyncio

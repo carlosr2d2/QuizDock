@@ -76,6 +76,9 @@ class TeamSnapshot(BaseModel):
     role: MembershipRole
     can_manage: bool
     can_create_content: bool
+    can_invite: bool = False
+    seat_limit: int | None = None
+    seat_used: int = 0
     members: list[MemberRead]
     invitations: list[InvitationRead]
     groups: list[GroupRead] = []

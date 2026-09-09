@@ -3,7 +3,7 @@ from uuid import uuid4
 import pytest
 
 from app.models import MembershipRole
-from app.models.identity import InvitationStatus
+from app.models.identity import InvitationStatus, PlanTier
 from app.services.errors import ConflictError, DomainError, ForbiddenError, NotFoundError
 from app.services.mail import MailError
 from app.services.team import TeamService
@@ -241,3 +241,79 @@ async def test_accept_rejects_wrong_email_after_accepted():
 
     with pytest.raises(ForbiddenError, match="otro correo"):
         await service.accept(created.invitation.token, other)
+
+
+@pytest.mark.asyncio
+async def test_free_team_cannot_invite():
+    org = make_org(is_personal=False, plan=PlanTier.FREE)
+    owner = make_user()
+    service, mailer = _team(org)
+
+    with pytest.raises(DomainError, match="plan gratuito"):
+        await service.invite(org.id, owner, MembershipRole.OWNER, "carlos@empresa.com", MembershipRole.MEMBER)
+    assert mailer.sent == []
+
+
+@pytest.mark.asyncio
+async def test_team_plan_blocks_invite_at_seat_limit():
+    org = make_org(is_personal=False, plan=PlanTier.TEAM)
+    owner = make_user()
+    service, _ = _team(org)
+    service.memberships.items = [make_membership(owner, org.id, MembershipRole.OWNER)]
+    for index in range(24):
+        person = make_user(email=f"user{index:02d}@empresa.com")
+        service.memberships.items.append(make_membership(person, org.id, MembershipRole.MEMBER))
+
+    with pytest.raises(DomainError, match="25"):
+        await service.invite(org.id, owner, MembershipRole.OWNER, "nuevo@empresa.com", MembershipRole.MEMBER)
+
+
+@pytest.mark.asyncio
+async def test_snapshot_exposes_seat_usage():
+    org = make_org(is_personal=False, plan=PlanTier.TEAM)
+    owner = make_user()
+    service, _ = _team(org)
+    service.memberships.items = [make_membership(owner, org.id, MembershipRole.OWNER)]
+
+    snapshot = await service.snapshot(org.id, MembershipRole.OWNER)
+
+    assert snapshot.can_invite is True
+    assert snapshot.seat_limit == 25
+    assert snapshot.seat_used == 1
+
+
+@pytest.mark.asyncio
+async def test_pending_invite_occupies_a_seat():
+    org = make_org(is_personal=False, plan=PlanTier.TEAM)
+    owner = make_user()
+    service, _ = _team(org)
+    service.memberships.items = [make_membership(owner, org.id, MembershipRole.OWNER)]
+    for index in range(23):
+        person = make_user(email=f"user{index:02d}@empresa.com")
+        service.memberships.items.append(make_membership(person, org.id, MembershipRole.MEMBER))
+
+    await service.invite(org.id, owner, MembershipRole.OWNER, "pendiente@empresa.com", MembershipRole.MEMBER)
+
+    with pytest.raises(DomainError, match="25"):
+        await service.invite(org.id, owner, MembershipRole.OWNER, "nuevo@empresa.com", MembershipRole.MEMBER)
+
+
+@pytest.mark.asyncio
+async def test_accept_blocked_when_seats_full():
+    org = make_org(is_personal=False, plan=PlanTier.TEAM)
+    owner = make_user()
+    invitee = make_user(email="carlos@empresa.com")
+    service, _ = _team(org)
+    service.memberships.items = [make_membership(owner, org.id, MembershipRole.OWNER)]
+    for index in range(23):
+        person = make_user(email=f"user{index:02d}@empresa.com")
+        service.memberships.items.append(make_membership(person, org.id, MembershipRole.MEMBER))
+
+    created = await service.invite(
+        org.id, owner, MembershipRole.OWNER, invitee.email, MembershipRole.MEMBER
+    )
+    extra = make_user(email="lleno@empresa.com")
+    service.memberships.items.append(make_membership(extra, org.id, MembershipRole.MEMBER))
+
+    with pytest.raises(DomainError, match="25"):
+        await service.accept(created.invitation.token, invitee)

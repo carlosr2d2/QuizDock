@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 from app.core.files import display_name, document_kind
 from app.models.document import Document, DocumentStatus
@@ -396,6 +396,9 @@ class CreditBalanceRead(BaseModel):
     organization_id: UUID
     balance: int
     plan: str
+    plan_sku: str | None = None
+    plan_renews_at: datetime | None = None
+    monthly_credits: int | None = None
 
 
 class PackPriceRead(BaseModel):
@@ -410,6 +413,24 @@ class CreditPackRead(BaseModel):
     prices: list[PackPriceRead]
 
 
+class SubscriptionPlanRead(BaseModel):
+    id: str
+    tier: str
+    monthly_credits: int
+    seats: int | None = None
+    personal_only: bool
+    available: bool
+    prices: list[PackPriceRead]
+
+
+class SubscriptionRead(BaseModel):
+    plan: str
+    sku: str | None = None
+    renews_at: datetime | None = None
+    monthly_credits: int | None = None
+    cancelable: bool = False
+
+
 class PaymentProviderRead(BaseModel):
     id: str
     label: str
@@ -421,18 +442,29 @@ class BillingCatalogRead(BaseModel):
     billing_country: str
     default_provider: str | None
     can_purchase: bool
+    is_personal: bool = True
+    subscription: SubscriptionRead | None = None
     providers: list[PaymentProviderRead]
+    plans: list[SubscriptionPlanRead] = []
     packs: list[CreditPackRead]
 
 
 class CheckoutStartRequest(BaseModel):
-    pack_id: str = Field(min_length=1, max_length=32)
+    pack_id: str | None = Field(default=None, max_length=32)
+    plan_id: str | None = Field(default=None, max_length=32)
     provider: str | None = Field(default=None, max_length=32)
+
+    @model_validator(mode="after")
+    def require_sku(self):
+        if bool(self.pack_id) == bool(self.plan_id):
+            raise ValueError("Provide pack_id or plan_id")
+        return self
 
 
 class CheckoutRead(ORMModel):
     id: UUID
     provider: str
+    kind: str = "pack"
     pack_id: str
     credits: int
     amount: int

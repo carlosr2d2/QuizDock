@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -44,7 +45,12 @@ export function PersonalWorkspaceHint({
           ))}
         </ul>
       ) : (
-        <p className="mt-4 text-sm text-muted-foreground">{t("team.noTeamYet")}</p>
+        <p className="mt-4 text-sm text-muted-foreground">
+          {t("team.noTeamYet")}{" "}
+          <Link href="/team/new" className="font-medium text-accent hover:underline">
+            {t("nav.createTeam")}
+          </Link>
+        </p>
       )}
     </Card>
   );

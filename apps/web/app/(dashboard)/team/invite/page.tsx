@@ -2,7 +2,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { CreateWorkspaceCard } from "@/components/team/create-workspace-card";
 import { IncomingInvites } from "@/components/team/incoming-invites";
 import { InviteCard } from "@/components/team/invite-card";
 import { PersonalWorkspaceHint } from "@/components/team/personal-workspace-hint";
@@ -48,7 +47,6 @@ export default function TeamInvitePage() {
       <IncomingInvites items={mine.data} loading={mine.isLoading} />
       {isPersonal ? <PersonalWorkspaceHint user={me.data} actionLabel={t("team.goInvite")} /> : null}
       {!isPersonal && snapshot ? <InviteCard snapshot={snapshot} /> : null}
-      <CreateWorkspaceCard redirectTo="/team/invite" />
     </div>
   );
 }

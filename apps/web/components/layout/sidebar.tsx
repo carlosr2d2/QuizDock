@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpen,
+  Building2,
   CircleUser,
   FileText,
   LayoutDashboard,
@@ -56,31 +57,33 @@ export function Sidebar() {
   const currentOrg = me.data?.memberships.find((item) => item.organization_id === selectedOrgId)?.organization;
   const currentRole = me.data?.memberships.find((item) => item.organization_id === selectedOrgId)?.role;
   const isPersonal = currentOrg?.is_personal !== false;
+  const canManage = currentRole === "owner" || currentRole === "admin";
   const canViewAudit = currentRole === "owner" || currentRole === "admin" || currentRole === "auditor";
-  const canCreateTeam =
-    Boolean(me.data) &&
-    isPersonal &&
-    !(me.data?.memberships.some((item) => !item.organization.is_personal) ?? false);
+  const showAuthoring = isPersonal || canManage;
+
+  const teamChildren = isPersonal
+    ? []
+    : [
+        { href: "/team/members", label: t("nav.members") },
+        ...(canViewAudit ? [{ href: "/team/analytics", label: t("nav.analytics") }] : []),
+        ...(canManage ? [{ href: "/team/groups", label: t("nav.groups") }] : []),
+        ...(canManage ? [{ href: "/team/invite", label: t("nav.invite") }] : []),
+        ...(canViewAudit ? [{ href: "/team/audit", label: t("nav.audit") }] : []),
+      ];
 
   const nav = [
     { href: "/overview", label: t("nav.overview"), icon: LayoutDashboard },
-    { href: "/documents", label: t("nav.documents"), icon: FileText },
+    ...(showAuthoring ? [{ href: "/documents", label: t("nav.documents"), icon: FileText }] : []),
     { href: "/exams", label: t("nav.exams"), icon: BookOpen },
-    { href: "/flashcards", label: t("nav.flashcards"), icon: Layers },
+    ...(showAuthoring ? [{ href: "/flashcards", label: t("nav.flashcards"), icon: Layers }] : []),
     ...(isPersonal
-      ? []
+      ? [{ href: "/team/new", label: t("nav.createTeam"), icon: Building2 }]
       : [
           {
             href: "/team/members",
             label: t("nav.team"),
             icon: Users,
-            children: [
-              { href: "/team/members", label: t("nav.members") },
-              { href: "/team/analytics", label: t("nav.analytics") },
-              { href: "/team/groups", label: t("nav.groups") },
-              { href: "/team/invite", label: t("nav.invite") },
-              ...(canViewAudit ? [{ href: "/team/audit", label: t("nav.audit") }] : []),
-            ],
+            children: teamChildren,
           },
         ]),
     { href: "/account", label: t("nav.account"), icon: CircleUser },
@@ -114,20 +117,14 @@ export function Sidebar() {
             </select>
           </label>
         ) : null}
-        {canCreateTeam ? (
-          <Link
-            href="/team/invite"
-            className="mt-2 block text-xs text-sidebar-muted hover:text-sidebar-foreground hover:underline"
-          >
-            {t("nav.createTeam")}
-          </Link>
-        ) : null}
       </div>
       <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3">
         {nav.map((item) => {
           const Icon = item.icon;
           const children = "children" in item ? item.children : undefined;
-          const sectionActive = Boolean(children) && (pathname === "/team" || pathname.startsWith("/team/"));
+          const sectionActive =
+            Boolean(children) &&
+            (pathname === "/team" || (pathname.startsWith("/team/") && pathname !== "/team/new"));
           const itemActive =
             !children && (pathname === item.href || pathname.startsWith(`${item.href}/`));
           return (

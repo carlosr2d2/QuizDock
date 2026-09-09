@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useState } from "react";
 
@@ -22,6 +23,11 @@ export function InviteCard({ snapshot }: { snapshot: TeamSnapshot }) {
   const [notice, setNotice] = useState<InviteNotice | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const pendingInvites = snapshot.invitations.filter((item) => item.status === "pending");
+  const canInvitePlan = snapshot.can_invite !== false;
+  const seatLimit = snapshot.seat_limit;
+  const seatUsed = snapshot.seat_used ?? snapshot.members.length;
+  const atCapacity = seatLimit != null && seatUsed >= seatLimit;
+  const showForm = snapshot.can_manage && canInvitePlan && !atCapacity;
 
   async function afterDeliver(item: Invitation) {
     setInviteError(null);
@@ -80,6 +86,29 @@ export function InviteCard({ snapshot }: { snapshot: TeamSnapshot }) {
   return (
     <Card>
       <CardDescription>{t("team.inviteCardBody")}</CardDescription>
+      {seatLimit == null ? (
+        <p className="mt-2 text-xs text-muted-foreground">{t("team.seatsUnlimited")}</p>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {t("team.seatsUsed", { used: seatUsed, limit: seatLimit })}
+        </p>
+      )}
+      {!canInvitePlan ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          {t("team.needTeamPlan")}{" "}
+          <Link href="/account" className="font-medium text-accent hover:underline">
+            {t("team.upgradePlan")}
+          </Link>
+        </p>
+      ) : atCapacity ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          {t("team.seatsFull")}{" "}
+          <Link href="/account" className="font-medium text-accent hover:underline">
+            {t("team.upgradePlan")}
+          </Link>
+        </p>
+      ) : null}
+      {showForm ? (
       <form onSubmit={onInvite} className="mt-4 grid gap-3 sm:grid-cols-[1fr_8rem_auto] sm:items-end">
         <div className="space-y-2">
           <Label htmlFor="invite-email">{t("common.email")}</Label>
@@ -104,6 +133,7 @@ export function InviteCard({ snapshot }: { snapshot: TeamSnapshot }) {
           {invite.isPending ? t("team.sending") : t("team.inviteButton")}
         </Button>
       </form>
+      ) : null}
       {inviteError ? <p className="mt-3 text-sm text-destructive">{inviteError}</p> : null}
       {notice ? (
         <p className={`mt-3 text-sm ${notice.sent ? "text-foreground" : "text-destructive"}`}>

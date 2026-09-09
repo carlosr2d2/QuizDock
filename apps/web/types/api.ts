@@ -11,8 +11,6 @@ export type Organization = {
   slug: string;
   plan: PlanTier;
   is_personal: boolean;
-  credit_balance: number;
-  billing_country: string;
 };
 
 export type Membership = {
@@ -293,6 +291,9 @@ export type CreditBalance = {
   organization_id: string;
   balance: number;
   plan: string;
+  plan_sku?: string | null;
+  plan_renews_at?: string | null;
+  monthly_credits?: number | null;
 };
 
 export type PaymentProviderId = "stripe" | "wompi" | "simulated" | string;
@@ -309,6 +310,24 @@ export type CreditPack = {
   prices: PackPrice[];
 };
 
+export type SubscriptionPlan = {
+  id: string;
+  tier: string;
+  monthly_credits: number;
+  seats: number | null;
+  personal_only: boolean;
+  available: boolean;
+  prices: PackPrice[];
+};
+
+export type BillingSubscription = {
+  plan: string;
+  sku: string | null;
+  renews_at: string | null;
+  monthly_credits: number | null;
+  cancelable: boolean;
+};
+
 export type PaymentProvider = {
   id: PaymentProviderId;
   label: string;
@@ -320,13 +339,17 @@ export type BillingCatalog = {
   billing_country: string;
   default_provider: PaymentProviderId | null;
   can_purchase: boolean;
+  is_personal?: boolean;
+  subscription?: BillingSubscription | null;
   providers: PaymentProvider[];
+  plans?: SubscriptionPlan[];
   packs: CreditPack[];
 };
 
 export type PaymentOrder = {
   id: string;
   provider: PaymentProviderId;
+  kind?: "pack" | "plan" | string;
   pack_id: string;
   credits: number;
   amount: number;
@@ -399,6 +422,9 @@ export type TeamSnapshot = {
   role: MembershipRole;
   can_manage: boolean;
   can_create_content: boolean;
+  can_invite?: boolean;
+  seat_limit?: number | null;
+  seat_used?: number;
   members: TeamMember[];
   invitations: Invitation[];
   groups?: TeamGroup[];

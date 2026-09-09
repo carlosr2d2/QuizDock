@@ -32,6 +32,7 @@ from app.schemas.team import (
 from app.services.audit import AuditService
 from app.services.errors import ConflictError, DomainError, ForbiddenError, NotFoundError
 from app.services.mail import MailError, Mailer, build_invite_email, get_mailer, invite_accept_url
+from app.services.plans import limits_for
 
 MANAGE_ROLES = {MembershipRole.OWNER, MembershipRole.ADMIN}
 INVITABLE_ROLES = {MembershipRole.ADMIN, MembershipRole.MEMBER, MembershipRole.AUDITOR}
@@ -62,7 +63,7 @@ class TeamService:
         org = Organization(
             name=name.strip(),
             slug=slug,
-            plan=PlanTier.TEAM,
+            plan=PlanTier.FREE,
             is_personal=False,
             credit_balance=0,
             billing_country="CO",
@@ -106,11 +107,16 @@ class TeamService:
             self._group_read(group, by_user) for group in await self.groups.list_for_org(organization_id)
         ]
         can_manage = role in MANAGE_ROLES and not org.is_personal
+        limits = limits_for(org)
+        seat_used = await self._occupied_seats(organization_id)
         return TeamSnapshot(
             organization=OrganizationRead.model_validate(org),
             role=role,
             can_manage=can_manage,
             can_create_content=role in MANAGE_ROLES,
+            can_invite=can_manage and limits.can_invite,
+            seat_limit=limits.seats,
+            seat_used=seat_used,
             members=member_reads,
             invitations=[
                 self._invitation_read(item, include_token=can_manage) for item in invitations
@@ -127,7 +133,7 @@ class TeamService:
         role: MembershipRole,
     ) -> InviteOutcome:
         org = await self._org(organization_id)
-        self._require_manage(org, actor_role)
+        self._require_team_features(org, actor_role)
         if role not in INVITABLE_ROLES:
             raise DomainError("El rol propietario no se asigna por invitación.")
         if email.lower() == actor.email.lower():
@@ -138,6 +144,8 @@ class TeamService:
             membership = await self.memberships.get(existing_user.id, organization_id)
             if membership is not None:
                 raise ConflictError("Ese correo ya es miembro de este workspace.")
+
+        await self._require_available_seat(org, email)
 
         pending = await self.invitations.get_pending(organization_id, email)
         if pending is not None:
@@ -319,7 +327,9 @@ class TeamService:
         if not await self._ensure_pending(invitation):
             raise DomainError("La invitación no es válida o caducó.")
 
+        org = await self._org(invitation.organization_id)
         if existing is None:
+            await self._require_available_seat(org, invitation.email)
             await self.memberships.add(
                 Membership(
                     user_id=user.id,
@@ -366,7 +376,7 @@ class TeamService:
         self, organization_id: UUID, actor_id: UUID, actor_role: MembershipRole, name: str
     ) -> GroupRead:
         org = await self._org(organization_id)
-        self._require_manage(org, actor_role)
+        self._require_team_features(org, actor_role)
         cleaned = name.strip()
         if await self.groups.get_by_name(organization_id, cleaned):
             raise ConflictError("Ya existe un grupo con ese nombre.")
@@ -400,7 +410,7 @@ class TeamService:
         actor_id: UUID | None = None,
     ) -> GroupRead:
         org = await self._org(organization_id)
-        self._require_manage(org, actor_role)
+        self._require_team_features(org, actor_role)
         group = await self.groups.get(group_id, organization_id)
         if group is None:
             raise NotFoundError("Grupo no encontrado")
@@ -428,7 +438,7 @@ class TeamService:
         self, organization_id: UUID, actor_role: MembershipRole, group_id: UUID, actor_id: UUID | None = None
     ) -> None:
         org = await self._org(organization_id)
-        self._require_manage(org, actor_role)
+        self._require_team_features(org, actor_role)
         group = await self.groups.get(group_id, organization_id)
         if group is None:
             raise NotFoundError("Grupo no encontrado")
@@ -455,7 +465,7 @@ class TeamService:
         actor_id: UUID | None = None,
     ) -> GroupRead:
         org = await self._org(organization_id)
-        self._require_manage(org, actor_role)
+        self._require_team_features(org, actor_role)
         group = await self.groups.get(group_id, organization_id)
         if group is None:
             raise NotFoundError("Grupo no encontrado")
@@ -490,7 +500,7 @@ class TeamService:
         actor_id: UUID | None = None,
     ) -> GroupRead:
         org = await self._org(organization_id)
-        self._require_manage(org, actor_role)
+        self._require_team_features(org, actor_role)
         group = await self.groups.get(group_id, organization_id)
         if group is None:
             raise NotFoundError("Grupo no encontrado")
@@ -531,7 +541,7 @@ class TeamService:
         actor_id: UUID | None = None,
     ) -> None:
         org = await self._org(organization_id)
-        self._require_manage(org, actor_role)
+        self._require_team_features(org, actor_role)
         member = await self.groups.get_member(group_id, user_id, organization_id)
         if member is None:
             raise NotFoundError("Ese integrante no está en el grupo.")
@@ -568,6 +578,34 @@ class TeamService:
             raise DomainError("El workspace personal no admite invitaciones ni grupos. Crea un equipo.")
         if role not in MANAGE_ROLES:
             raise ForbiddenError("Solo el propietario o un admin puede gestionar el equipo.")
+
+    def _require_team_features(self, org: Organization, role: MembershipRole) -> None:
+        self._require_manage(org, role)
+        if not limits_for(org).can_invite:
+            raise DomainError(
+                "El plan gratuito no incluye invitaciones ni grupos. Suscríbete al plan Equipo."
+            )
+
+    async def _occupied_seats(self, organization_id: UUID, extra_email: str | None = None) -> int:
+        members = await self.memberships.list_with_users(organization_id)
+        invites = await self.invitations.list_for_org(organization_id)
+        skip = extra_email.lower() if extra_email else None
+        pending = {
+            item.email.lower()
+            for item in invites
+            if item.status == InvitationStatus.PENDING and item.email.lower() != skip
+        }
+        return len(members) + len(pending)
+
+    async def _require_available_seat(self, org: Organization, email: str | None = None) -> None:
+        limits = limits_for(org)
+        if limits.seats is None:
+            return
+        used = await self._occupied_seats(org.id, extra_email=email)
+        if used >= limits.seats:
+            raise DomainError(
+                f"Este plan admite hasta {limits.seats} miembros. Amplía el plan para invitar a más personas."
+            )
 
     async def _usable_or_public(self, token: str) -> Invitation:
         invitation = await self.invitations.get_by_token(token)

@@ -1,5 +1,9 @@
 import type { Locale } from "./config";
 
+type LeafStrings<T> = {
+  [K in keyof T]: T[K] extends string ? string : T[K] extends object ? LeafStrings<T[K]> : never;
+};
+
 export const es = {
   common: {
     loading: "Cargando…",
@@ -48,7 +52,7 @@ export const es = {
     groups: "Grupos",
     invite: "Invitar",
     audit: "Auditoría",
-    createTeam: "Crear equipo e invitar →",
+    createTeam: "Nuevo workspace",
     inviteTeam: "Invitar al equipo →",
     account: "Mi cuenta",
     logout: "Cerrar sesión",
@@ -424,9 +428,9 @@ export const es = {
     saveMembers: "Guardar integrantes",
     groupPlaceholder: "Turno mañana",
     sending: "Enviando…",
-    newTeam: "Nuevo equipo",
-    newTeamBody: "Crea un workspace compartido. Cada equipo tiene sus propios documentos y créditos.",
-    createTeam: "Crear equipo",
+    newTeam: "Nombre del workspace",
+    newTeamBody: "Al crearlo dejarás el workspace actual y pasarás a este equipo.",
+    createTeam: "Crear workspace",
     takenExams: "Exámenes tomados",
     thisWorkspace: "este workspace",
     inviteTitle: "Invitar",
@@ -475,6 +479,12 @@ export const es = {
     inviteCardBody:
       "Enviamos un correo con el enlace. El invitado entra con el mismo correo. Si el envío falla, copia el enlace.",
     inviteButton: "Invitar",
+    seatsUsed: "{used} de {limit} asientos",
+    seatsUnlimited: "Asientos ilimitados",
+    needTeamPlan: "El plan gratuito no incluye invitaciones. Suscríbete al plan Equipo en Mi cuenta.",
+    seatsFull: "Este plan llegó al máximo de miembros. Amplía el plan en Mi cuenta para invitar a más personas.",
+    upgradePlan: "Ver planes",
+    needTeamPlanGroups: "Los grupos entran con el plan Equipo. Suscríbete en Mi cuenta.",
     sentTo: "Correo enviado a {email}.",
     sendFailed: "No se pudo enviar el correo a {email}. Copia el enlace y envíalo tú.",
     resend: "Reenviar",
@@ -490,13 +500,20 @@ export const es = {
     personalTitle: "Estás en el workspace personal",
     personalBody:
       "Invitaciones, grupos, analíticas y la lista de miembros viven en un equipo de empresa. Cambia de workspace o crea uno nuevo.",
-    noTeamYet: "Aún no tienes un equipo. Créalo más abajo.",
+    noTeamYet: "Aún no tienes un equipo de empresa.",
     goTeam: "Ir al equipo",
-    createWorkspace: "Crear equipo",
-    createWorkspaceBody: "Un workspace de empresa para invitar miembros y asignar exámenes.",
+    createWorkspace: "Nuevo workspace",
+    createWorkspaceBody: "Un workspace de empresa, aparte del personal. El plan decide qué se habilita.",
     workspaceName: "Nombre del equipo",
     creating: "Creando…",
     create: "Crear",
+    newTeamSwitch:
+      "Esto abre un workspace de empresa aparte del personal. No se mezcla con tus documentos ni créditos actuales.",
+    newTeamLeaveCurrent:
+      "Ahora estás en {name}. El equipo nuevo será otro workspace; no se añade a este.",
+    newTeamPlanFree: "Plan gratuito: documentos, exámenes y flashcards para quien lo crea.",
+    newTeamPlanPaid:
+      "Plan Equipo o Enterprise (Mi cuenta): invitaciones, grupos, analíticas de equipo y más asientos.",
     progressError: "No se pudo cargar el resumen",
     loadingExams: "Cargando exámenes…",
     noMemberExams: "Todavía no ha completado ningún examen en este workspace.",
@@ -553,9 +570,30 @@ export const es = {
     statusCanceled: "Cancelada",
     paymentSuccess: "Pago confirmado. Los créditos ya están en el workspace.",
     paymentCancel: "El pago se canceló. No se cobró nada.",
+    workspaceCreated:
+      "Workspace creado. Ya estás en el equipo nuevo. Suscríbete al plan Equipo para invitar y usar grupos.",
     movements: "Movimientos de créditos",
     noMovements: "Sin movimientos todavía.",
     loadError: "No se pudo cargar la cuenta",
+    planTitle: "Plan",
+    planBody: "La suscripción recarga créditos cada 30 días. Los paquetes de abajo son recargas extra, de una sola vez.",
+    planFree: "Gratuito",
+    planCurrent: "Plan actual",
+    planRenews: "Próxima recarga {date}",
+    planMonthly: "{count} créditos / mes",
+    planSeats: "Hasta {count} miembros",
+    planSeatsUnlimited: "Miembros ilimitados",
+    planSubscribe: "Suscribirme",
+    planUnavailablePersonal: "Contrátalo en tu workspace personal.",
+    planUnavailableTeam: "Contrátalo en un workspace de equipo.",
+    cancelPlan: "Cancelar suscripción",
+    canceling: "Cancelando…",
+    planIndividual: "Individual",
+    planIndividualPlus: "Individual Plus",
+    planTeam: "Equipo",
+    planEnterprise: "Enterprise",
+    kindPack: "Paquete",
+    kindPlan: "Plan",
   },
   error: {
     screen: "Algo salió mal en esta pantalla",
@@ -572,7 +610,7 @@ export const es = {
   },
 } as const;
 
-export const en: typeof es extends infer T ? { [K in keyof T]: T[K] extends string ? string : { [P in keyof T[K]]: string } } : never = {
+export const en: LeafStrings<typeof es> = {
   common: {
     loading: "Loading…",
     loadingWorkspace: "Loading workspace…",
@@ -620,7 +658,7 @@ export const en: typeof es extends infer T ? { [K in keyof T]: T[K] extends stri
     groups: "Groups",
     invite: "Invite",
     audit: "Audit",
-    createTeam: "Create a team and invite →",
+    createTeam: "New workspace",
     inviteTeam: "Invite to the team →",
     account: "Account",
     logout: "Log out",
@@ -996,9 +1034,9 @@ export const en: typeof es extends infer T ? { [K in keyof T]: T[K] extends stri
     saveMembers: "Save members",
     groupPlaceholder: "Morning shift",
     sending: "Sending…",
-    newTeam: "New team",
-    newTeamBody: "Create a shared workspace. Each team has its own documents and credits.",
-    createTeam: "Create team",
+    newTeam: "Workspace name",
+    newTeamBody: "After creating it you will leave the current workspace and switch to this team.",
+    createTeam: "Create workspace",
     takenExams: "Exams taken",
     thisWorkspace: "this workspace",
     inviteTitle: "Invite",
@@ -1047,6 +1085,12 @@ export const en: typeof es extends infer T ? { [K in keyof T]: T[K] extends stri
     inviteCardBody:
       "We email the link. The invitee signs in with the same address. If sending fails, copy the link.",
     inviteButton: "Invite",
+    seatsUsed: "{used} of {limit} seats",
+    seatsUnlimited: "Unlimited seats",
+    needTeamPlan: "The free plan does not include invitations. Subscribe to Team in Account.",
+    seatsFull: "This plan is at member capacity. Upgrade in Account to invite more people.",
+    upgradePlan: "View plans",
+    needTeamPlanGroups: "Groups are included in the Team plan. Subscribe in Account.",
     sentTo: "Email sent to {email}.",
     sendFailed: "Could not email {email}. Copy the link and send it yourself.",
     resend: "Resend",
@@ -1062,13 +1106,20 @@ export const en: typeof es extends infer T ? { [K in keyof T]: T[K] extends stri
     personalTitle: "You're in the personal workspace",
     personalBody:
       "Invites, groups, analytics, and the member list live on a company team. Switch workspace or create one.",
-    noTeamYet: "You don't have a team yet. Create one below.",
+    noTeamYet: "You don't have a company team yet.",
     goTeam: "Go to team",
-    createWorkspace: "Create team",
-    createWorkspaceBody: "A company workspace to invite members and assign exams.",
+    createWorkspace: "New workspace",
+    createWorkspaceBody: "A company workspace, separate from personal. The plan decides what is enabled.",
     workspaceName: "Team name",
     creating: "Creating…",
     create: "Create",
+    newTeamSwitch:
+      "This opens a company workspace separate from your personal one. It does not mix with your current documents or credits.",
+    newTeamLeaveCurrent:
+      "You are in {name} now. The new team will be a different workspace; it is not added to this one.",
+    newTeamPlanFree: "Free plan: documents, exams, and flashcards for the person who creates it.",
+    newTeamPlanPaid:
+      "Team or Enterprise plan (Account): invitations, groups, team analytics, and extra seats.",
     progressError: "Could not load the summary",
     loadingExams: "Loading exams…",
     noMemberExams: "They haven't completed an exam in this workspace yet.",
@@ -1125,9 +1176,30 @@ export const en: typeof es extends infer T ? { [K in keyof T]: T[K] extends stri
     statusCanceled: "Canceled",
     paymentSuccess: "Payment confirmed. Credits are already in the workspace.",
     paymentCancel: "Payment was canceled. Nothing was charged.",
+    workspaceCreated:
+      "Workspace created. You are now in the new team. Subscribe to Team to invite people and use groups.",
     movements: "Credit movements",
     noMovements: "No movements yet.",
     loadError: "Could not load the account",
+    planTitle: "Plan",
+    planBody: "The subscription refills credits every 30 days. Packs below are one-time top-ups.",
+    planFree: "Free",
+    planCurrent: "Current plan",
+    planRenews: "Next refill {date}",
+    planMonthly: "{count} credits / month",
+    planSeats: "Up to {count} members",
+    planSeatsUnlimited: "Unlimited members",
+    planSubscribe: "Subscribe",
+    planUnavailablePersonal: "Subscribe from your personal workspace.",
+    planUnavailableTeam: "Subscribe from a team workspace.",
+    cancelPlan: "Cancel subscription",
+    canceling: "Canceling…",
+    planIndividual: "Individual",
+    planIndividualPlus: "Individual Plus",
+    planTeam: "Team",
+    planEnterprise: "Enterprise",
+    kindPack: "Pack",
+    kindPlan: "Plan",
   },
   error: {
     screen: "Something went wrong on this screen",

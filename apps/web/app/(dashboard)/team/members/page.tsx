@@ -22,6 +22,9 @@ export default function TeamMembersPage() {
             {isPersonal
               ? t("team.membersPersonal")
               : t("team.membersBody", { name: snapshot?.organization.name ?? t("team.thisWorkspace") })}
+            {!isPersonal && snapshot?.seat_limit != null
+              ? ` · ${t("team.seatsUsed", { used: snapshot.seat_used ?? snapshot.members.length, limit: snapshot.seat_limit })}`
+              : null}
           </p>
         )}
       </div>

@@ -3,6 +3,7 @@ from uuid import uuid4
 import pytest
 
 from app.models import MembershipRole
+from app.models.identity import PlanTier
 from app.models.exam import ExamStatus
 from app.models.group import Group, GroupMember
 from app.schemas.content import ExamAssignRequest
@@ -79,6 +80,15 @@ async def test_create_group_rejects_personal_workspace():
     service = _team(org)
     with pytest.raises(DomainError, match="personal"):
         await service.create_group(org.id, owner.id, MembershipRole.OWNER, "Grupo")
+
+
+@pytest.mark.asyncio
+async def test_create_group_rejects_free_team_plan():
+    org = make_org(is_personal=False, plan=PlanTier.FREE)
+    owner = make_user()
+    service = _team(org)
+    with pytest.raises(DomainError, match="plan gratuito"):
+        await service.create_group(org.id, owner.id, MembershipRole.OWNER, "Turno mañana")
 
 
 @pytest.mark.asyncio

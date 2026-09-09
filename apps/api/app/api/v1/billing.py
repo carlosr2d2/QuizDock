@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import RequestContext, get_context, get_db, require_roles
+from app.api.deps import RequestContext, get_db, require_roles
 from app.schemas.content import (
     BillingCatalogRead,
     BillingCountryUpdate,
@@ -21,7 +21,7 @@ router = APIRouter(tags=["billing"])
 
 @router.get("/billing/credits", response_model=CreditBalanceRead)
 async def credit_balance(
-    ctx: RequestContext = Depends(get_context),
+    ctx: RequestContext = Depends(require_roles(*AUTHOR_ROLES, detail=BILLING_DENIED)),
     db: AsyncSession = Depends(get_db),
 ) -> CreditBalanceRead:
     return await BillingService(db).get_balance(ctx.organization_id)
@@ -29,7 +29,7 @@ async def credit_balance(
 
 @router.get("/billing/catalog", response_model=BillingCatalogRead)
 async def billing_catalog(
-    ctx: RequestContext = Depends(get_context),
+    ctx: RequestContext = Depends(require_roles(*AUTHOR_ROLES, detail=BILLING_DENIED)),
     db: AsyncSession = Depends(get_db),
 ) -> BillingCatalogRead:
     payload = await CheckoutService(db).catalog(ctx.organization_id, ctx.role)
@@ -60,8 +60,18 @@ async def start_checkout(
         ctx.role,
         payload.pack_id,
         payload.provider,
+        plan_id=payload.plan_id,
     )
     return CheckoutRead.model_validate(order)
+
+
+@router.post("/billing/subscription/cancel", response_model=BillingCatalogRead)
+async def cancel_subscription(
+    ctx: RequestContext = Depends(require_roles(*AUTHOR_ROLES, detail=BILLING_DENIED)),
+    db: AsyncSession = Depends(get_db),
+) -> BillingCatalogRead:
+    result = await CheckoutService(db).cancel_subscription(ctx.organization_id, ctx.role)
+    return BillingCatalogRead.model_validate(result)
 
 
 @router.post("/billing/orders/{order_id}/simulate", response_model=CheckoutRead)
@@ -76,7 +86,7 @@ async def simulate_checkout(
 
 @router.get("/billing/orders", response_model=list[CheckoutRead])
 async def list_orders(
-    ctx: RequestContext = Depends(get_context),
+    ctx: RequestContext = Depends(require_roles(*AUTHOR_ROLES, detail=BILLING_DENIED)),
     db: AsyncSession = Depends(get_db),
 ) -> list[CheckoutRead]:
     orders = await CheckoutService(db).list_orders(ctx.organization_id)
@@ -85,7 +95,7 @@ async def list_orders(
 
 @router.get("/billing/transactions", response_model=list[CreditTransactionRead])
 async def list_transactions(
-    ctx: RequestContext = Depends(get_context),
+    ctx: RequestContext = Depends(require_roles(*AUTHOR_ROLES, detail=BILLING_DENIED)),
     db: AsyncSession = Depends(get_db),
 ) -> list[CreditTransactionRead]:
     items = await BillingService(db).list_transactions(ctx.organization_id)

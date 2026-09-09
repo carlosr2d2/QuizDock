@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { GroupsCard } from "@/components/groups-card";
 import { PersonalWorkspaceHint } from "@/components/team/personal-workspace-hint";
 import { ErrorState } from "@/components/ui/error-state";
@@ -34,11 +36,19 @@ export default function TeamGroupsPage() {
       ) : null}
 
       {isPersonal ? <PersonalWorkspaceHint user={me.data} actionLabel={t("team.viewGroups")} /> : null}
+      {!isPersonal && snapshot && snapshot.can_manage && snapshot.can_invite === false ? (
+        <p className="text-sm text-muted-foreground">
+          {t("team.needTeamPlanGroups")}{" "}
+          <Link href="/account" className="font-medium text-accent hover:underline">
+            {t("team.upgradePlan")}
+          </Link>
+        </p>
+      ) : null}
       {!isPersonal && snapshot ? (
         <GroupsCard
           groups={snapshot.groups ?? []}
           members={snapshot.members}
-          canManage={snapshot.can_manage}
+          canManage={Boolean(snapshot.can_manage && snapshot.can_invite !== false)}
         />
       ) : null}
     </div>

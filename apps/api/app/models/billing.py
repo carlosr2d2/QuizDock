@@ -46,6 +46,7 @@ class PaymentOrder(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     provider: Mapped[str] = mapped_column(String(32), index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="pack")
     pack_id: Mapped[str] = mapped_column(String(32))
     credits: Mapped[int] = mapped_column(Integer)
     amount: Mapped[int] = mapped_column(Integer)

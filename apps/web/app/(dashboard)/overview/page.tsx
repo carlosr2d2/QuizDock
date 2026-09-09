@@ -22,17 +22,21 @@ export default function OverviewPage() {
     queryKey: ["me"],
     queryFn: () => apiFetch<User>("/api/v1/auth/me"),
   });
+  const canAuthor = canCreateContent(me.data);
   const documents = useQuery({
     queryKey: ["documents"],
     queryFn: () => apiFetch<Document[]>("/api/v1/documents"),
+    enabled: canAuthor,
   });
   const exams = useQuery({
     queryKey: ["exams"],
     queryFn: () => apiFetch<Exam[]>("/api/v1/exams"),
+    enabled: canAuthor,
   });
   const credits = useQuery({
     queryKey: ["credits"],
     queryFn: () => apiFetch<CreditBalance>("/api/v1/billing/credits"),
+    enabled: canAuthor,
   });
   const progress = useQuery({
     queryKey: ["progress"],
@@ -66,14 +70,16 @@ export default function OverviewPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">{t("overview.title")}</h1>
-        {me.isLoading || credits.isLoading ? (
+        {me.isLoading || (canAuthor && credits.isLoading) ? (
           <Loader label={t("common.loadingWorkspace")} className="mt-1" />
         ) : (
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("overview.plan", {
-              name: workspace?.name ?? t("overview.yourWorkspace"),
-              plan: credits.data?.plan ?? "—",
-            })}
+            {canAuthor
+              ? t("overview.plan", {
+                  name: workspace?.name ?? t("overview.yourWorkspace"),
+                  plan: credits.data?.plan ?? "—",
+                })
+              : (workspace?.name ?? t("overview.yourWorkspace"))}
           </p>
         )}
       </div>
@@ -105,26 +111,31 @@ export default function OverviewPage() {
         </Card>
       ) : null}
 
-      {exams.isError || documents.isError || progress.isError || credits.isError ? (
+      {progress.isError || (canAuthor && (exams.isError || documents.isError || credits.isError)) ? (
         <ErrorState
           title={t("overview.loadError")}
-          error={exams.error ?? documents.error ?? progress.error ?? credits.error}
+          error={progress.error ?? exams.error ?? documents.error ?? credits.error}
           onRetry={() => {
-            void exams.refetch();
-            void documents.refetch();
             void progress.refetch();
-            void credits.refetch();
+            if (canAuthor) {
+              void exams.refetch();
+              void documents.refetch();
+              void credits.refetch();
+            }
           }}
         />
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat title={t("overview.credits")} value={credits.data?.balance ?? "—"} href="/account" loading={credits.isLoading} />
-        <Stat title={t("nav.documents")} value={documents.data?.length ?? "—"} href="/documents" loading={documents.isLoading} />
-        <Stat title={t("nav.exams")} value={exams.data?.length ?? "—"} href="/exams" loading={exams.isLoading} />
-        <Stat title={t("nav.flashcards")} value={snapshot?.flashcard_count ?? "—"} href="/flashcards" loading={progress.isLoading} />
-      </div>
+      {canAuthor ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat title={t("overview.credits")} value={credits.data?.balance ?? "—"} href="/account" loading={credits.isLoading} />
+          <Stat title={t("nav.documents")} value={documents.data?.length ?? "—"} href="/documents" loading={documents.isLoading} />
+          <Stat title={t("nav.exams")} value={exams.data?.length ?? "—"} href="/exams" loading={exams.isLoading} />
+          <Stat title={t("nav.flashcards")} value={snapshot?.flashcard_count ?? "—"} href="/flashcards" loading={progress.isLoading} />
+        </div>
+      ) : null}
 
+      {canAuthor ? (
       <div>
         <h2 className="text-sm font-medium text-muted-foreground">{t("overview.review")}</h2>
         {progress.isLoading ? (
@@ -162,6 +173,7 @@ export default function OverviewPage() {
           />
         </div>
       </div>
+      ) : null}
 
       <div>
         <h2 className="text-sm font-medium text-muted-foreground">{t("overview.performance")}</h2>

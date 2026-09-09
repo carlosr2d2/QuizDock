@@ -331,6 +331,8 @@ class FakePaymentOrderRepo:
         ensure_id(order)
         if order.status is None:
             order.status = PaymentStatus.PENDING
+        if getattr(order, "kind", None) is None:
+            order.kind = "pack"
         self.items.append(order)
         return order
 
@@ -745,17 +747,22 @@ def make_org(
     slug: str = "demo-workspace",
     credit_balance: int = 50,
     is_personal: bool = True,
-    plan: PlanTier = PlanTier.FREE,
+    plan: PlanTier | None = None,
     billing_country: str = "CO",
+    plan_sku: str | None = None,
+    plan_renews_at=None,
 ) -> Organization:
+    resolved_plan = plan if plan is not None else (PlanTier.FREE if is_personal else PlanTier.TEAM)
     return Organization(
         id=uuid4(),
         name=name,
         slug=slug,
-        plan=plan,
+        plan=resolved_plan,
         is_personal=is_personal,
         credit_balance=credit_balance,
         billing_country=billing_country,
+        plan_sku=plan_sku,
+        plan_renews_at=plan_renews_at,
         created_at=utcnow(),
         updated_at=utcnow(),
     )
