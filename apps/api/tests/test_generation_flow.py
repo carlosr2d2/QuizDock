@@ -5,7 +5,7 @@ import pytest
 from app.core.config import get_settings
 from app.models import MembershipRole
 from app.models.document import DocumentStatus
-from app.models.exam import AssignmentStatus, ExamStatus, Question, QuestionKind
+from app.models.exam import AssignmentStatus, ExamAssignment, ExamStatus, Question, QuestionKind
 from app.schemas.content import AttemptSubmit, ExamAssignRequest, ExamGenerateRequest
 from app.services.billing import BillingService
 from app.services.errors import ConflictError, DomainError, ForbiddenError, InsufficientCreditsError, NotFoundError
@@ -26,6 +26,7 @@ from tests.fakes import (
     make_exam,
     make_membership,
     make_org,
+    make_question,
     make_user,
 )
 
@@ -360,3 +361,114 @@ async def test_assign_rejects_users_outside_the_workspace():
             MembershipRole.ADMIN,
             ExamAssignRequest(user_ids=[uuid4()]),
         )
+
+
+@pytest.mark.asyncio
+async def test_request_generation_stores_pdf_download_flag(monkeypatch):
+    monkeypatch.setattr("app.services.generation.enqueue", lambda *args, **kwargs: True)
+    org = make_org(credit_balance=50)
+    owner_id = uuid4()
+    document = make_document(org.id, owner_id)
+    service = _exam_service(org, document=document)
+
+    result = await service.request_generation(
+        org.id,
+        owner_id,
+        MembershipRole.OWNER,
+        ExamGenerateRequest(document_id=document.id, question_count=4, allow_pdf_download=True),
+    )
+
+    assert result.allow_pdf_download is True
+    assert service.repo.exams[0].allow_pdf_download is True
+
+
+@pytest.mark.asyncio
+async def test_assigned_member_downloads_pdf_when_enabled():
+    org = make_org(is_personal=False)
+    owner = make_user()
+    member = make_user(email="carlos@example.com")
+    exam = make_exam(org.id, owner.id, uuid4(), status=ExamStatus.READY, allow_pdf_download=True)
+    exam.questions = [
+        make_question(exam.id, prompt="¿Cuál es la capital?", options=["Bogotá", "Medellín", "Cali", "Barranquilla"]),
+    ]
+    exam.questions[0].explanation = "No debe salir en el PDF"
+    service = _exam_service(org, exam=exam)
+    service.repo.assignments.append(
+        ExamAssignment(
+            organization_id=org.id,
+            exam_id=exam.id,
+            user_id=member.id,
+            status=AssignmentStatus.PENDING,
+        )
+    )
+
+    pdf, filename = await service.download_pdf(exam.id, org.id, member.id, MembershipRole.MEMBER)
+
+    assert filename.endswith(".pdf")
+    assert pdf.startswith(b"%PDF")
+    from io import BytesIO
+
+    from pypdf import PdfReader
+
+    text = "".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf)).pages)
+    assert "capital" in text
+    assert "Bogotá" in text
+    assert "No debe salir" not in text
+
+
+@pytest.mark.asyncio
+async def test_assigned_member_cannot_download_pdf_when_disabled():
+    org = make_org(is_personal=False)
+    member = make_user()
+    exam = make_exam(org.id, uuid4(), uuid4(), status=ExamStatus.READY, allow_pdf_download=False)
+    exam.questions = [make_question(exam.id)]
+    service = _exam_service(org, exam=exam)
+    service.repo.assignments.append(
+        ExamAssignment(
+            organization_id=org.id,
+            exam_id=exam.id,
+            user_id=member.id,
+            status=AssignmentStatus.PENDING,
+        )
+    )
+
+    with pytest.raises(ForbiddenError, match="no habilitó"):
+        await service.download_pdf(exam.id, org.id, member.id, MembershipRole.MEMBER)
+
+
+@pytest.mark.asyncio
+async def test_unassigned_member_cannot_download_pdf():
+    org = make_org(is_personal=False)
+    exam = make_exam(org.id, uuid4(), uuid4(), status=ExamStatus.READY, allow_pdf_download=True)
+    exam.questions = [make_question(exam.id)]
+    service = _exam_service(org, exam=exam)
+
+    with pytest.raises(ForbiddenError, match="no te fue asignado"):
+        await service.download_pdf(exam.id, org.id, uuid4(), MembershipRole.MEMBER)
+
+
+@pytest.mark.asyncio
+async def test_owner_can_download_pdf_without_enabling_assignees():
+    org = make_org(is_personal=False)
+    owner = make_user()
+    exam = make_exam(org.id, owner.id, uuid4(), status=ExamStatus.READY, allow_pdf_download=False)
+    exam.questions = [make_question(exam.id, prompt="Pregunta del owner")]
+    service = _exam_service(org, exam=exam)
+
+    pdf, _filename = await service.download_pdf(exam.id, org.id, owner.id, MembershipRole.OWNER)
+
+    assert pdf.startswith(b"%PDF")
+
+
+@pytest.mark.asyncio
+async def test_admin_can_toggle_pdf_download():
+    org = make_org(is_personal=False)
+    owner = make_user()
+    exam = make_exam(org.id, owner.id, uuid4(), status=ExamStatus.READY, allow_pdf_download=False)
+    exam.questions = [make_question(exam.id)]
+    service = _exam_service(org, exam=exam)
+
+    updated = await service.set_allow_pdf_download(exam.id, org.id, owner.id, MembershipRole.OWNER, True)
+
+    assert updated.allow_pdf_download is True
+    assert exam.allow_pdf_download is True

@@ -1,3 +1,4 @@
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -13,6 +14,7 @@ from app.schemas.content import (
     ExamDetail,
     ExamGenerateRequest,
     ExamRead,
+    ExamSettingsUpdate,
     FlashcardCreate,
     FlashcardDeckRead,
     FlashcardGenerateRequest,
@@ -62,6 +64,43 @@ async def get_exam(
     db: AsyncSession = Depends(get_db),
 ) -> ExamDetail:
     return await ExamService(db).get_detail(exam_id, ctx.organization_id, ctx.user.id, ctx.role)
+
+
+@exams_router.patch("/{exam_id}", response_model=ExamDetail)
+async def update_exam_settings(
+    exam_id: UUID,
+    payload: ExamSettingsUpdate,
+    ctx: RequestContext = Depends(require_roles(*AUTHOR_ROLES, detail=AUTHOR_DENIED)),
+    db: AsyncSession = Depends(get_db),
+) -> ExamDetail:
+    return await ExamService(db).set_allow_pdf_download(
+        exam_id,
+        ctx.organization_id,
+        ctx.user.id,
+        ctx.role,
+        payload.allow_pdf_download,
+    )
+
+
+@exams_router.get("/{exam_id}/pdf")
+async def download_exam_pdf(
+    exam_id: UUID,
+    ctx: RequestContext = Depends(get_context),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    pdf, filename = await ExamService(db).download_pdf(
+        exam_id, ctx.organization_id, ctx.user.id, ctx.role, locale=ctx.user.locale
+    )
+    ascii_name = filename.encode("ascii", "ignore").decode() or "exam.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename)}'
+            )
+        },
+    )
 
 
 @exams_router.get("/{exam_id}/attempts/{attempt_id}", response_model=AttemptRead)

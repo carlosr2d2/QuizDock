@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { PageLoader, Loader, ProgressBar } from "@/components/ui/loader";
 import { ErrorState } from "@/components/ui/error-state";
-import { apiFetch } from "@/lib/api";
+import { apiDownload, apiFetch } from "@/lib/api";
 import { useI18n, useT } from "@/lib/i18n/provider";
 import { cn, formatDateTime, formatScore } from "@/lib/utils";
 import type {
@@ -158,6 +158,7 @@ function ExamPlayer() {
         {data.assigned_to_me && data.assignment_status === "pending" ? (
           <p className="mt-1 text-sm text-accent">{t("exams.assignedPending")}</p>
         ) : null}
+        {data.status === "ready" ? <ExamPdfActions exam={data} /> : null}
       </div>
     </div>
   );
@@ -423,6 +424,74 @@ function AttemptAnswer({ item }: { item: QuestionResult }) {
     <div className="mt-2 space-y-1 text-sm text-muted-foreground">
       <p>{t("exams.yourAnswer", { answer: formatChoices(item.options, selected, empty) })}</p>
       <p>{t("exams.correctChoice", { answer: formatChoices(item.options, correct, empty) })}</p>
+    </div>
+  );
+}
+
+function ExamPdfActions({ exam }: { exam: ExamDetail }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: (allow_pdf_download: boolean) =>
+      apiFetch<ExamDetail>(`/api/v1/exams/${exam.id}`, {
+        method: "PATCH",
+        body: { allow_pdf_download },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["exam", exam.id], data);
+      void queryClient.invalidateQueries({ queryKey: ["exams"] });
+    },
+  });
+  const download = useMutation({
+    mutationFn: () => apiDownload(`/api/v1/exams/${exam.id}/pdf`),
+    onSuccess: (blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${exam.title || "examen"}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    },
+    onError: (error: Error) => setDownloadError(error.message),
+  });
+
+  if (!exam.can_assign && !exam.can_download_pdf) return null;
+
+  return (
+    <div className="mt-3 space-y-2">
+      {exam.can_assign ? (
+        <label className="flex max-w-xl cursor-pointer items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={Boolean(exam.allow_pdf_download)}
+            disabled={save.isPending}
+            onChange={(event) => save.mutate(event.target.checked)}
+          />
+          <span>
+            {t("exams.allowPdfDownload")}
+            <span className="mt-0.5 block text-xs text-muted-foreground">{t("exams.allowPdfDownloadHint")}</span>
+          </span>
+        </label>
+      ) : null}
+      {exam.can_download_pdf ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          loading={download.isPending}
+          onClick={() => {
+            setDownloadError(null);
+            download.mutate();
+          }}
+        >
+          {download.isPending ? t("exams.downloadingPdf") : t("exams.downloadPdf")}
+        </Button>
+      ) : null}
+      {downloadError ? <p className="text-sm text-destructive">{downloadError}</p> : null}
     </div>
   );
 }

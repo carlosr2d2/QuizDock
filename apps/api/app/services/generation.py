@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.files import display_name
 from app.core.jobs import enqueue
+from app.core.text import slugify
 from app.models import (
     DocumentStatus,
     Exam,
@@ -53,6 +54,7 @@ from app.schemas.content import (
 from app.services.audit import AuditService
 from app.services.billing import BillingService
 from app.services.errors import ConflictError, DomainError, ForbiddenError, NotFoundError
+from app.services.exam_pdf import render_exam_pdf
 from app.services.progress import (
     KIND_ACCURACY_ATTEMPT_LIMIT,
     TREND_LIMIT,
@@ -185,6 +187,7 @@ class ExamService:
                     assignment_count=total,
                     assignment_completed_count=completed,
                     can_assign=can_assign,
+                    can_download_pdf=self._can_download_pdf(org, role, exam, assignment),
                 )
             )
         return items
@@ -243,6 +246,7 @@ class ExamService:
                 assignment_count=total,
                 assignment_completed_count=completed,
                 can_assign=self._can_assign(org, role),
+                can_download_pdf=self._can_download_pdf(org, role, exam, assignment),
             ).model_dump(),
             questions=questions,
             attempts=attempts,
@@ -475,6 +479,7 @@ class ExamService:
             question_count=payload.question_count,
             generated_count=0,
             credit_cost=cost,
+            allow_pdf_download=payload.allow_pdf_download,
         )
         await self.repo.add(exam)
         await self.audit.record(
@@ -848,6 +853,51 @@ class ExamService:
         if org.is_personal or role in MANAGE_ROLES:
             return True
         return assignment is not None
+
+    def _can_download_pdf(self, org, role: MembershipRole, exam: Exam, assignment: ExamAssignment | None) -> bool:
+        if exam.status != ExamStatus.READY:
+            return False
+        if org.is_personal or role in MANAGE_ROLES:
+            return True
+        return assignment is not None and bool(exam.allow_pdf_download)
+
+    async def download_pdf(
+        self,
+        exam_id: UUID,
+        organization_id: UUID,
+        user_id: UUID,
+        role: MembershipRole,
+        locale: str = "es",
+    ) -> tuple[bytes, str]:
+        org = await self._org(organization_id)
+        exam = await self.get(exam_id, organization_id)
+        assignment = await self.repo.get_assignment(exam.id, user_id, organization_id)
+        if not self._sees_catalog(org, role) and assignment is None:
+            raise ForbiddenError("Este examen no te fue asignado.")
+        if not self._can_download_pdf(org, role, exam, assignment):
+            if assignment is not None:
+                raise ForbiddenError("El administrador no habilitó la descarga en PDF de este examen.")
+            raise ForbiddenError("No puedes descargar este examen.")
+        questions = sorted(exam.questions or [], key=lambda item: item.position)
+        if not questions:
+            raise ConflictError("El examen todavía no tiene preguntas para descargar.")
+        filename = f"{slugify(exam.title, 'examen')}.pdf"
+        pdf = render_exam_pdf(title=exam.title, questions=questions, locale=locale)
+        return pdf, filename
+
+    async def set_allow_pdf_download(
+        self,
+        exam_id: UUID,
+        organization_id: UUID,
+        user_id: UUID,
+        role: MembershipRole,
+        enabled: bool,
+    ) -> ExamDetail:
+        require_author(role)
+        exam = await self.get(exam_id, organization_id)
+        exam.allow_pdf_download = enabled
+        await self.session.commit()
+        return await self.get_detail(exam_id, organization_id, user_id, role)
 
     async def _fail_exam(self, exam: Exam, message: str) -> None:
         exam.status = ExamStatus.FAILED

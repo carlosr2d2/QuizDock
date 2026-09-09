@@ -131,6 +131,7 @@ class Exam(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     generated_count: Mapped[int] = mapped_column(Integer, default=0)
     credit_cost: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    allow_pdf_download: Mapped[bool] = mapped_column(default=False)
 
     questions: Mapped[list[Question]] = relationship(back_populates="exam", order_by="Question.position")
 

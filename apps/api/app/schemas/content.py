@@ -55,6 +55,7 @@ class ExamGenerateRequest(BaseModel):
     title: str | None = Field(default=None, max_length=240)
     kind: ExamKind = ExamKind.QUIZ
     question_count: int = Field(default=10, ge=1, le=50)
+    allow_pdf_download: bool = False
 
 
 class ExamCreate(ExamGenerateRequest):
@@ -86,6 +87,8 @@ class ExamRead(ORMModel):
     assignment_count: int = 0
     assignment_completed_count: int = 0
     can_assign: bool = False
+    allow_pdf_download: bool = False
+    can_download_pdf: bool = False
 
 
 def exam_read(
@@ -100,6 +103,7 @@ def exam_read(
     assignment_count: int = 0,
     assignment_completed_count: int = 0,
     can_assign: bool = False,
+    can_download_pdf: bool = False,
 ) -> ExamRead:
     payload = ExamRead.model_validate(exam)
     updates: dict = {
@@ -111,6 +115,7 @@ def exam_read(
         "assignment_count": assignment_count,
         "assignment_completed_count": assignment_completed_count,
         "can_assign": can_assign,
+        "can_download_pdf": can_download_pdf,
     }
     if document is not None:
         updates.update(
@@ -166,6 +171,10 @@ class ExamAssignRequest(BaseModel):
     user_ids: list[UUID] = Field(default_factory=list)
     group_ids: list[UUID] = Field(default_factory=list)
     all_members: bool = False
+
+
+class ExamSettingsUpdate(BaseModel):
+    allow_pdf_download: bool
 
 
 class AttemptSubmit(BaseModel):

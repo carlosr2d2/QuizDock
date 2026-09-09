@@ -35,6 +35,7 @@ export default function DocumentsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [examDoc, setExamDoc] = useState<Document | null>(null);
   const [questionCount, setQuestionCount] = useState(10);
+  const [allowPdfDownload, setAllowPdfDownload] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{
     filename: string;
     percent: number;
@@ -100,10 +101,18 @@ export default function DocumentsPage() {
   }, [documents.data, uploadProgress]);
 
   const generateExam = useMutation({
-    mutationFn: ({ documentId, questionCount: count }: { documentId: string; questionCount: number }) =>
+    mutationFn: ({
+      documentId,
+      questionCount: count,
+      allowPdfDownload: allowPdf,
+    }: {
+      documentId: string;
+      questionCount: number;
+      allowPdfDownload: boolean;
+    }) =>
       apiFetch<Exam>("/api/v1/exams", {
         method: "POST",
-        body: { document_id: documentId, question_count: count },
+        body: { document_id: documentId, question_count: count, allow_pdf_download: allowPdf },
       }),
     onSuccess: (exam) => {
       setExamDoc(null);
@@ -256,6 +265,20 @@ export default function DocumentsPage() {
                 </p>
               ) : null}
             </div>
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={allowPdfDownload}
+                onChange={(event) => setAllowPdfDownload(event.target.checked)}
+              />
+              <span>
+                {t("documents.allowPdfDownload")}
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {t("documents.allowPdfDownloadHint")}
+                </span>
+              </span>
+            </label>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -263,7 +286,11 @@ export default function DocumentsPage() {
                 loading={generateExam.isPending}
                 onClick={() => {
                   setActionError(null);
-                  generateExam.mutate({ documentId: examDoc.id, questionCount });
+                  generateExam.mutate({
+                    documentId: examDoc.id,
+                    questionCount,
+                    allowPdfDownload,
+                  });
                 }}
               >
                 {generateExam.isPending

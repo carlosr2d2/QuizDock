@@ -80,6 +80,8 @@ export type Exam = {
   assignment_count: number;
   assignment_completed_count: number;
   can_assign: boolean;
+  allow_pdf_download?: boolean;
+  can_download_pdf?: boolean;
 };
 
 export type ExamAssignment = {

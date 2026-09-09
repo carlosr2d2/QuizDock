@@ -718,6 +718,22 @@ class FakeExamRepo:
             if item.exam_id == exam_id and item.organization_id == organization_id
         ]
 
+    async def stats_for_exams(self, exam_ids, organization_id, user_id):
+        from app.repositories.content import ExamAttemptStats
+
+        return {exam_id: ExamAttemptStats() for exam_id in exam_ids}
+
+    async def assignment_counts(self, exam_ids, organization_id):
+        return {exam_id: (0, 0) for exam_id in exam_ids}
+
+    async def list_attempts(self, exam_id, organization_id, user_id):
+        return [
+            item
+            for item in self.attempts
+            if getattr(item, "exam_id", None) == exam_id
+            and getattr(item, "user_id", None) == user_id
+        ]
+
 
 def make_user(
     *,
@@ -800,6 +816,7 @@ def make_exam(
     status: ExamStatus = ExamStatus.GENERATING,
     question_count: int = 8,
     credit_cost: int = 8,
+    allow_pdf_download: bool = False,
 ) -> Exam:
     exam = Exam(
         id=uuid4(),
@@ -812,6 +829,7 @@ def make_exam(
         question_count=question_count,
         generated_count=0,
         credit_cost=credit_cost,
+        allow_pdf_download=allow_pdf_download,
         created_at=utcnow(),
         updated_at=utcnow(),
     )
@@ -837,6 +855,7 @@ def make_question(
         options=options or ["A", "B", "C", "D"],
         correct_index=correct_index,
         correct_indices=correct_indices if correct_indices is not None else [correct_index],
+        difficulty="medium",
         position=position,
         created_at=utcnow(),
         updated_at=utcnow(),

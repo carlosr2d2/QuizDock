@@ -105,6 +105,37 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   return (await response.json()) as T;
 }
 
+export async function apiDownload(path: string): Promise<Blob> {
+  const headers = new Headers();
+  const token = getToken();
+  const orgId = getOrgId();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (orgId) headers.set("X-Organization-Id", orgId);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, { cache: "no-store", headers });
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    throw new ApiError(0, tStored("error.network"), raw);
+  }
+
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      const data = (await response.json()) as { detail?: unknown };
+      if (typeof data.detail === "string") detail = data.detail;
+    } catch {
+      /* ignore */
+    }
+    if (response.status === 401 || detail === "Invalid token") {
+      void redirectToLogin();
+    }
+    throw new ApiError(response.status, response.status >= 500 ? tStored("error.server") : detail, detail);
+  }
+  return response.blob();
+}
+
 export async function apiUpload<T>(
   path: string,
   body: FormData,
