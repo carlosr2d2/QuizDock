@@ -62,7 +62,12 @@ from app.services.progress import (
     as_utc_date,
     consecutive_streak,
 )
-from app.services.llm import generate_exam_from_contexts, generate_flashcards_from_contexts
+from app.services.llm import (
+    generate_exam_from_contexts,
+    generate_flashcards_from_contexts,
+    polish_exam_text,
+    present_exam_item,
+)
 from app.services.permissions import require_author
 from app.services.rag import RagService
 
@@ -95,6 +100,12 @@ def question_correct_indices(question: Question) -> list[int]:
 
 def question_kind(question: Question) -> QuestionKind:
     return QuestionKind.parse(question.kind)
+
+
+def presented_question(question: Question) -> tuple[str, list[str], str | None]:
+    prompt, options = present_exam_item(question.prompt, question.options)
+    explanation = polish_exam_text(question.explanation) if question.explanation else question.explanation
+    return prompt, options, explanation
 
 
 KIND_ACCURACY_ORDER = (
@@ -217,8 +228,11 @@ class ExamService:
         questions = []
         if exam.status != ExamStatus.GENERATING:
             questions = [
-                QuestionPublic.model_validate(question)
+                QuestionPublic.model_validate(question).model_copy(
+                    update={"prompt": prompt, "options": options}
+                )
                 for question in sorted(exam.questions, key=lambda item: item.position)
+                for prompt, options, _explanation in [presented_question(question)]
             ]
         attempts = [
             AttemptSummary(
@@ -538,21 +552,22 @@ class ExamService:
 
             async def persist(item) -> None:
                 nonlocal saved
+                prompt, options = present_exam_item(item.prompt, item.options)
                 async with lock:
                     await self.repo.add_questions(
                         [
                             Question(
                                 exam_id=exam.id,
-                                prompt=item.prompt,
+                                prompt=prompt,
                                 kind=QuestionKind.parse(item.kind),
-                                options=item.options,
+                                options=options,
                                 correct_index=(
                                     item.correct_index
                                     if item.correct_index is not None
                                     else item.correct_indices[0]
                                 ),
                                 correct_indices=item.correct_indices,
-                                explanation=item.explanation,
+                                explanation=polish_exam_text(item.explanation) if item.explanation else item.explanation,
                                 difficulty=item.difficulty,
                                 position=saved,
                                 source_chunk_position=item.source_chunk_position,
@@ -560,13 +575,20 @@ class ExamService:
                         ]
                     )
                     saved += 1
-                    exam.generated_count = saved
+                    exam.generated_count = max(exam.generated_count, saved)
+                    await self.session.commit()
+
+            async def report_progress(current: int, _total: int) -> None:
+                async with lock:
+                    if exam.status != ExamStatus.GENERATING:
+                        return
+                    exam.generated_count = max(exam.generated_count, min(current, target))
                     await self.session.commit()
 
             generated = await generate_exam_from_contexts(
                 await RagService(self.session).contexts_for(
                     document,
-                    needed,
+                    max(needed * 2, needed),
                     seed=exam.id,
                     exclude_positions=used,
                 ),
@@ -574,6 +596,7 @@ class ExamService:
                 document.language or "es",
                 exam.title,
                 on_question=persist,
+                on_progress=report_progress,
             )
             exam.title = generated.title or exam.title
             exam.question_count = saved
@@ -611,17 +634,18 @@ class ExamService:
             is_correct = selected == expected
             if is_correct:
                 correct += 1
+            prompt, options, explanation = presented_question(question)
             results.append(
                 QuestionResult(
                     question_id=question.id,
-                    prompt=question.prompt,
+                    prompt=prompt,
                     kind=question_kind(question),
-                    options=question.options,
+                    options=options,
                     selected_index=selected[0] if selected else None,
                     selected_indices=selected,
                     correct_index=expected[0],
                     correct_indices=expected,
-                    explanation=question.explanation,
+                    explanation=explanation,
                     is_correct=is_correct,
                 )
             )
@@ -680,17 +704,18 @@ class ExamService:
                 raw = answers.get(question.id)
             selected = answer_indices(raw)
             expected = question_correct_indices(question)
+            prompt, options, explanation = presented_question(question)
             results.append(
                 QuestionResult(
                     question_id=question.id,
-                    prompt=question.prompt,
+                    prompt=prompt,
                     kind=question_kind(question),
-                    options=question.options,
+                    options=options,
                     selected_index=selected[0] if selected else None,
                     selected_indices=selected,
                     correct_index=expected[0],
                     correct_indices=expected,
-                    explanation=question.explanation,
+                    explanation=explanation,
                     is_correct=selected == expected,
                 )
             )
@@ -995,10 +1020,10 @@ class FlashcardGenerationService:
             deck = await generate_flashcards_from_contexts(
                 await RagService(self.session).contexts_for(
                     document,
-                    job.item_count or 12,
+                    job.item_count or 20,
                     seed=job.id,
                 ),
-                job.item_count or 12,
+                job.item_count or 20,
                 document.language or "es",
             )
             cards = [

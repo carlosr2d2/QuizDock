@@ -91,16 +91,7 @@ class TeamService:
     async def snapshot(self, organization_id: UUID, role: MembershipRole) -> TeamSnapshot:
         org = await self._org(organization_id)
         members = await self.memberships.list_with_users(organization_id)
-        member_reads = [
-            MemberRead(
-                id=item.id,
-                user_id=item.user_id,
-                email=item.user.email,
-                full_name=item.user.full_name,
-                role=item.role,
-            )
-            for item in members
-        ]
+        member_reads = [self._member_read(item) for item in members]
         by_user = {item.user_id: item for item in member_reads}
         invitations = await self.invitations.list_for_org(organization_id)
         groups = [
@@ -567,6 +558,16 @@ class TeamService:
     ) -> InvitationRead:
         return self._invitation_read(invitation, include_token=include_token, email_sent=email_sent)
 
+    def _member_read(self, item: Membership) -> MemberRead:
+        return MemberRead(
+            id=item.id,
+            user_id=item.user_id,
+            email=item.user.email,
+            full_name=item.user.full_name,
+            role=item.role,
+            last_seen_at=item.last_seen_at,
+        )
+
     async def _org(self, organization_id: UUID) -> Organization:
         org = await self.orgs.get(organization_id)
         if org is None:
@@ -678,16 +679,7 @@ class TeamService:
 
     async def _group_read_fresh(self, group: Group, organization_id: UUID) -> GroupRead:
         members = await self.memberships.list_with_users(organization_id)
-        by_user = {
-            item.user_id: MemberRead(
-                id=item.id,
-                user_id=item.user_id,
-                email=item.user.email,
-                full_name=item.user.full_name,
-                role=item.role,
-            )
-            for item in members
-        }
+        by_user = {item.user_id: self._member_read(item) for item in members}
         return self._group_read(group, by_user)
 
     async def _unique_slug(self, base: str) -> str:

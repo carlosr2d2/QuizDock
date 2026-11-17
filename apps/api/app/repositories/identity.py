@@ -1,6 +1,7 @@
+from datetime import timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -96,6 +97,31 @@ class MembershipRepository:
     async def delete(self, membership: Membership) -> None:
         await self.session.delete(membership)
         await self.session.flush()
+
+    async def touch_last_seen(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        *,
+        min_interval: timedelta = timedelta(minutes=5),
+    ) -> bool:
+        now = utcnow()
+        result = await self.session.execute(
+            update(Membership)
+            .where(
+                Membership.user_id == user_id,
+                Membership.organization_id == organization_id,
+                or_(
+                    Membership.last_seen_at.is_(None),
+                    Membership.last_seen_at <= now - min_interval,
+                ),
+            )
+            .values(last_seen_at=now)
+        )
+        if not result.rowcount:
+            return False
+        await self.session.commit()
+        return True
 
 
 class InvitationRepository:

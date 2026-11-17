@@ -13,6 +13,7 @@ from app.models.chunk import DocumentChunk
 from app.repositories.chunks import ChunkRepository
 from app.services.chunking import chunk_text
 from app.services.embeddings import embed_texts
+from app.services.exam_quality import polish_exam_text
 
 settings = get_settings()
 
@@ -30,11 +31,15 @@ class RagService:
 
     async def index_document(self, document: Document) -> int:
         text = document.extracted_text or ""
-        pieces = chunk_text(
-            text,
-            size=settings.rag_chunk_size,
-            overlap=settings.rag_chunk_overlap,
-        )
+        pieces = [
+            polish_exam_text(piece)
+            for piece in chunk_text(
+                text,
+                size=settings.rag_chunk_size,
+                overlap=settings.rag_chunk_overlap,
+            )
+        ]
+        pieces = [piece for piece in pieces if piece]
         vectors = await embed_texts(pieces)
         rows = [
             DocumentChunk(

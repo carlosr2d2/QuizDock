@@ -143,6 +143,13 @@ class FakeMembershipRepo:
     async def delete(self, membership: Membership) -> None:
         self.items = [item for item in self.items if item is not membership and item.id != membership.id]
 
+    async def touch_last_seen(self, user_id: UUID, organization_id: UUID, *, min_interval=None) -> bool:
+        membership = await self.get(user_id, organization_id)
+        if membership is None:
+            return False
+        membership.last_seen_at = utcnow()
+        return True
+
 
 class FakeGroupRepo:
     def __init__(self) -> None:
@@ -391,6 +398,13 @@ class FakeDocumentRepo:
 
     async def delete(self, document: Document) -> None:
         self.by_id.pop(document.id, None)
+
+    async def exists_filename(self, organization_id: UUID, filename: str) -> bool:
+        target = filename.lower()
+        return any(
+            item.organization_id == organization_id and item.filename.lower() == target
+            for item in self.by_id.values()
+        )
 
 
 class FakeExamRepo:

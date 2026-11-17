@@ -21,7 +21,7 @@ from app.schemas.content import (
 )
 from app.services.audit import AuditService
 from app.services.progress import as_utc_date
-from app.services.errors import NotFoundError
+from app.services.errors import ConflictError, NotFoundError
 from app.services.ingestion import extract_document, pdf_metadata_title
 from app.services.permissions import require_author
 from app.services.preview import infer_display_title, infer_title_heuristic, looks_truncated, render_pdf_cover
@@ -48,9 +48,13 @@ class DocumentService:
         file_bytes: bytes | None = None,
     ) -> Document:
         require_author(role)
+        filename = Path(payload.filename).name or "document.pdf"
+        if await self.repo.exists_filename(organization_id, filename):
+            raise ConflictError(
+                f"Ya existe un documento con el archivo «{filename}» en este workspace."
+            )
         storage_dir = Path(settings.storage_dir)
         storage_dir.mkdir(parents=True, exist_ok=True)
-        filename = Path(payload.filename).name or "document.pdf"
         storage_key = f"{organization_id}/{uuid4()}-{filename}"
         dest = storage_dir / storage_key
         dest.parent.mkdir(parents=True, exist_ok=True)

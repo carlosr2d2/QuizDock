@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -186,6 +187,30 @@ async def test_resend_unknown_invitation():
     service, _ = _team(org)
     with pytest.raises(NotFoundError):
         await service.resend(org.id, owner, MembershipRole.OWNER, uuid4())
+
+
+@pytest.mark.asyncio
+async def test_snapshot_includes_last_seen_and_pending_invites():
+    org = make_org(is_personal=False)
+    owner = make_user(email="owner@empresa.com", full_name="Owner")
+    member = make_user(email="ana@empresa.com", full_name="Ana")
+    seen_at = datetime(2026, 11, 16, 15, 0, tzinfo=timezone.utc)
+    service, _ = _team(org)
+    owner_membership = make_membership(owner, org.id, MembershipRole.OWNER)
+    owner_membership.last_seen_at = seen_at
+    service.memberships.items = [
+        owner_membership,
+        make_membership(member, org.id, MembershipRole.MEMBER),
+    ]
+    await service.invite(org.id, owner, MembershipRole.OWNER, "carlos@empresa.com", MembershipRole.MEMBER)
+
+    snapshot = await service.snapshot(org.id, MembershipRole.OWNER)
+
+    by_email = {item.email: item for item in snapshot.members}
+    assert by_email["owner@empresa.com"].last_seen_at == seen_at
+    assert by_email["ana@empresa.com"].last_seen_at is None
+    pending = [item for item in snapshot.invitations if item.status == InvitationStatus.PENDING]
+    assert [item.email for item in pending] == ["carlos@empresa.com"]
 
 
 @pytest.mark.asyncio

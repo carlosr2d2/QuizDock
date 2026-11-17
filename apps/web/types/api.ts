@@ -378,6 +378,7 @@ export type TeamMember = {
   email: string;
   full_name: string;
   role: MembershipRole;
+  last_seen_at?: string | null;
 };
 
 export type TeamGroup = {

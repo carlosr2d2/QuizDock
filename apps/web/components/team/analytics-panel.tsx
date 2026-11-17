@@ -5,10 +5,10 @@ import { useState } from "react";
 
 import { AttemptRow } from "@/components/attempt-row";
 import { MemberProgressPanel } from "@/components/member-progress-panel";
-import { Card, CardDescription, CardTitle, surfaceListClass } from "@/components/ui/card";
+import { Card, CardDescription, CardTitle, listRowHoverClass, surfaceListClass } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useI18n } from "@/lib/i18n/provider";
-import { formatDateTime, formatScore } from "@/lib/utils";
+import { cn, formatDateTime, formatScore } from "@/lib/utils";
 import type { MembershipRole, TeamAnalytics, TeamMember, TeamMemberAnalytics } from "@/types/api";
 
 export function TeamAnalyticsPanel({ data }: { data: TeamAnalytics }) {
@@ -51,7 +51,10 @@ export function TeamAnalyticsPanel({ data }: { data: TeamAnalytics }) {
               <li key={item.user_id}>
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className={cn(
+                    "flex w-full items-center justify-between gap-4 px-5 py-4 text-left",
+                    listRowHoverClass,
+                  )}
                   onClick={() => openMember(item)}
                 >
                   <div className="min-w-0">
@@ -84,7 +87,7 @@ export function TeamAnalyticsPanel({ data }: { data: TeamAnalytics }) {
               <li key={item.exam_id}>
                 <Link
                   href={`/exams/${item.exam_id}`}
-                  className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-muted/70"
+                  className={cn("flex items-center justify-between gap-4 px-5 py-4", listRowHoverClass)}
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{item.title}</p>

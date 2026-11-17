@@ -75,6 +75,7 @@ class Membership(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Enum(MembershipRole, name="membership_role", native_enum=False, length=32),
         default=MembershipRole.MEMBER,
     )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="memberships")
     organization: Mapped[Organization] = relationship(back_populates="memberships")

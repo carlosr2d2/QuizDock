@@ -325,7 +325,7 @@ class FlashcardCreate(BaseModel):
 
 class FlashcardGenerateRequest(BaseModel):
     document_id: UUID
-    card_count: int = Field(default=12, ge=4, le=30)
+    card_count: int = Field(default=20, ge=20, le=40)
 
 
 class FlashcardRead(ORMModel):

@@ -200,13 +200,15 @@ async def test_fulfill_persists_legacy_kind_as_value(monkeypatch):
         async def contexts_for(self, *args, **kwargs):
             return [RetrievedContext(position=0, content="El tenancy unifica B2B y B2C.")]
 
-    async def fake_generate(contexts, needed, language, title, on_question=None):
+    async def fake_generate(contexts, needed, language, title, on_question=None, on_progress=None):
         question = GeneratedQuestion(
             prompt="¿Qué comparte B2B y B2C?",
             kind="SINGLE_CHOICE",
             options=["Tenancy", "Precios", "RBAC", "SMTP"],
             correct_indices=[0],
         )
+        if on_progress:
+            await on_progress(1, needed)
         if on_question:
             await on_question(question)
         return GeneratedExam(title="Tenancy unificado", questions=[question])

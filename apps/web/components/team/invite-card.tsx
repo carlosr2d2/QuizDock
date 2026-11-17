@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription } from "@/components/ui/card";
+import { Card, CardDescription, listItemClass, nestedListClass } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
@@ -142,11 +142,11 @@ export function InviteCard({ snapshot }: { snapshot: TeamSnapshot }) {
       ) : null}
 
       {pendingInvites.length ? (
-        <ul className="mt-5 divide-y divide-border rounded-xl border border-border">
+        <ul className={`mt-5 ${nestedListClass}`}>
           {pendingInvites.map((item) => (
             <li
               key={item.id}
-              className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${listItemClass}`}
             >
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{item.email}</p>

@@ -1,14 +1,15 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { DocumentCover } from "@/components/document-cover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { surfaceListClass } from "@/components/ui/card";
+import { listItemClass, surfaceListClass } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { ListLoader, Loader } from "@/components/ui/loader";
@@ -24,8 +25,9 @@ export function FlashcardsView() {
   const searchParams = useSearchParams();
   const jobId = searchParams.get("job");
   const documentId = searchParams.get("document");
-  const [index, setIndex] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [flipped, setFlipped] = useState(false);
+  const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
 
   const job = useQuery({
     queryKey: ["job", jobId],
@@ -48,12 +50,12 @@ export function FlashcardsView() {
   });
   const canAuthor = canCreateContent(me.data);
 
-  const duePath = documentId
-    ? `/api/v1/flashcards?due=true&document_id=${documentId}`
-    : "/api/v1/flashcards?due=true";
-  const due = useQuery({
-    queryKey: ["flashcards-due", documentId],
-    queryFn: () => apiFetch<Flashcard[]>(duePath),
+  const cardsPath = documentId
+    ? `/api/v1/flashcards?document_id=${documentId}`
+    : "/api/v1/flashcards";
+  const cardsQuery = useQuery({
+    queryKey: ["flashcards", documentId],
+    queryFn: () => apiFetch<Flashcard[]>(cardsPath),
     refetchOnMount: "always",
   });
 
@@ -63,10 +65,12 @@ export function FlashcardsView() {
         method: "POST",
         body: { quality },
       }),
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
+      setSeenIds((current) => new Set(current).add(updated.id));
       setFlipped(false);
-      setIndex(0);
-      await queryClient.invalidateQueries({ queryKey: ["flashcards-due"] });
+      queryClient.setQueryData<Flashcard[]>(["flashcards", documentId], (current) =>
+        (current ?? []).map((card) => (card.id === updated.id ? { ...card, ...updated } : card)),
+      );
       await queryClient.invalidateQueries({ queryKey: ["flashcard-decks"] });
       await queryClient.invalidateQueries({ queryKey: ["progress"] });
     },
@@ -75,19 +79,22 @@ export function FlashcardsView() {
   useEffect(() => {
     if (job.data?.status !== "succeeded") return;
     void queryClient.invalidateQueries({ queryKey: ["flashcard-decks"] });
-    void queryClient.invalidateQueries({ queryKey: ["flashcards-due"] });
+    void queryClient.invalidateQueries({ queryKey: ["flashcards"] });
     void queryClient.invalidateQueries({ queryKey: ["credits"] });
     void queryClient.invalidateQueries({ queryKey: ["progress"] });
   }, [job.data?.status, queryClient]);
 
+  useEffect(() => {
+    setSelectedId(null);
+    setFlipped(false);
+  }, [documentId]);
+
   const decksLoading = decks.isLoading;
-  const dueLoading = due.isLoading;
-  const queue = due.data ?? [];
-  const current = queue[index] ?? queue[0];
+  const cards = cardsQuery.data ?? [];
   const generating = job.data?.status === "queued" || job.data?.status === "running";
-  const activeDeck = decks.data?.find((deck) => (deck.document_id ?? "") === (documentId ?? ""));
   const totalDue = decks.data?.reduce((sum, deck) => sum + deck.due_count, 0) ?? 0;
   const totalCards = decks.data?.reduce((sum, deck) => sum + deck.card_count, 0) ?? 0;
+  const selected = cards.find((card) => card.id === selectedId) ?? cards[0] ?? null;
 
   return (
     <div className="space-y-8">
@@ -121,61 +128,27 @@ export function FlashcardsView() {
         <p className="text-sm text-destructive">{job.data.error_message ?? t("flashcards.generateFailed")}</p>
       ) : null}
 
-      {dueLoading && !current && !generating ? (
+      {cardsQuery.isError ? (
+        <ErrorState
+          title={t("flashcards.loadError")}
+          error={cardsQuery.error}
+          onRetry={() => void cardsQuery.refetch()}
+        />
+      ) : cardsQuery.isLoading && !generating ? (
         <Loader label={t("flashcards.loadingDue")} className="justify-center py-10" />
-      ) : current ? (
-        <div className="mx-auto max-w-xl space-y-4">
-          {activeDeck || current.document_title ? (
-            <p className="text-center text-xs text-muted-foreground">
-              {activeDeck?.document_title ?? current.document_title}
-            </p>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => setFlipped((value) => !value)}
-            className={cn(
-              "w-full rounded-xl border px-6 py-16 text-center shadow-sm transition-colors",
-              flipped
-                ? "border-accent bg-accent/15 hover:bg-accent/20"
-                : "border-border bg-card hover:border-accent/50 hover:bg-muted",
-            )}
-          >
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              {flipped ? t("flashcards.answer") : t("flashcards.question")}
-            </p>
-            <p className="mt-3 text-base font-medium">{flipped ? current.back : current.front}</p>
-          </button>
-          {flipped ? (
-            <div className="flex justify-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => review.mutate({ cardId: current.id, quality: 1 })}
-                loading={review.isPending}
-              >
-                {t("flashcards.again")}
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => review.mutate({ cardId: current.id, quality: 3 })}
-                loading={review.isPending}
-              >
-                {t("flashcards.good")}
-              </Button>
-              <Button size="sm" onClick={() => review.mutate({ cardId: current.id, quality: 5 })} loading={review.isPending}>
-                {t("flashcards.easy")}
-              </Button>
-            </div>
-          ) : (
-            <p className="text-center text-xs text-muted-foreground">
-              {t("flashcards.tapReveal", {
-                current: Math.min(index + 1, queue.length),
-                total: queue.length,
-              })}
-            </p>
-          )}
-        </div>
+      ) : cards.length ? (
+        <FlashcardStrip
+          cards={cards}
+          selectedId={selected?.id ?? null}
+          flipped={flipped}
+          seenIds={seenIds}
+          reviewing={review.isPending}
+          onSelect={(cardId) => {
+            setSelectedId(cardId);
+            setFlipped((open) => (cardId === selected?.id ? !open : false));
+          }}
+          onReview={(cardId, quality) => review.mutate({ cardId, quality })}
+        />
       ) : decks.data?.length && !generating ? (
         <p className="text-sm text-muted-foreground">
           {documentId ? t("flashcards.deckUpToDate") : t("flashcards.noneDue")}
@@ -205,9 +178,10 @@ export function FlashcardsView() {
         <ul className={surfaceListClass}>
           {decks.data.map((deck) => {
             const href = deck.document_id ? `/flashcards?document=${deck.document_id}` : "/flashcards";
-            const selected = (deck.document_id ?? "") === (documentId ?? "") && Boolean(documentId || !deck.document_id);
+            const selectedDeck =
+              (deck.document_id ?? "") === (documentId ?? "") && Boolean(documentId || !deck.document_id);
             return (
-              <li key={deck.document_id ?? "none"} className="flex items-center justify-between gap-4 px-5 py-4">
+              <li key={deck.document_id ?? "none"} className={`flex items-center justify-between gap-4 ${listItemClass}`}>
                 <div className="flex min-w-0 items-center gap-4">
                   <DocumentCover
                     documentId={deck.document_id}
@@ -250,7 +224,7 @@ export function FlashcardsView() {
                     <Badge>{t("flashcards.caughtUpBadge")}</Badge>
                   )}
                   <Link href={href}>
-                    <Button size="sm" variant={selected && deck.due_count ? "primary" : "outline"}>
+                    <Button size="sm" variant={selectedDeck ? "primary" : "outline"}>
                       {deck.due_count ? t("flashcards.reviewDeck") : t("flashcards.viewDeck")}
                     </Button>
                   </Link>
@@ -259,6 +233,145 @@ export function FlashcardsView() {
             );
           })}
         </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function FlashcardStrip({
+  cards,
+  selectedId,
+  flipped,
+  seenIds,
+  reviewing,
+  onSelect,
+  onReview,
+}: {
+  cards: Flashcard[];
+  selectedId: string | null;
+  flipped: boolean;
+  seenIds: Set<string>;
+  reviewing: boolean;
+  onSelect: (cardId: string) => void;
+  onReview: (cardId: string, quality: number) => void;
+}) {
+  const { t } = useI18n();
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
+
+  function updateArrows() {
+    const node = scrollerRef.current;
+    if (!node) return;
+    const max = node.scrollWidth - node.clientWidth;
+    setCanLeft(node.scrollLeft > 8);
+    setCanRight(max - node.scrollLeft > 8);
+  }
+
+  useEffect(() => {
+    updateArrows();
+    const node = scrollerRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver(updateArrows);
+    observer.observe(node);
+    node.addEventListener("scroll", updateArrows, { passive: true });
+    return () => {
+      observer.disconnect();
+      node.removeEventListener("scroll", updateArrows);
+    };
+  }, [cards.length]);
+
+  function scrollByDirection(direction: 1 | -1) {
+    const node = scrollerRef.current;
+    if (!node) return;
+    node.scrollBy({ left: direction * (node.clientWidth * 0.8), behavior: "smooth" });
+  }
+
+  return (
+    <div className="relative">
+      {canLeft ? (
+        <button
+          type="button"
+          aria-label={t("flashcards.moreCards")}
+          onClick={() => scrollByDirection(-1)}
+          className="absolute left-0 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card/95 text-foreground shadow-sm hover:bg-muted"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      ) : null}
+      <div
+        ref={scrollerRef}
+        className="flex gap-3 overflow-x-auto scroll-smooth pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {cards.map((card) => {
+          const reviewed = Boolean(card.last_reviewed_at) || seenIds.has(card.id);
+          const active = card.id === selectedId;
+          const showBack = active && flipped;
+          return (
+            <div
+              key={card.id}
+              className={cn(
+                "flex h-52 w-36 shrink-0 snap-start flex-col rounded-xl p-2.5 sm:h-56 sm:w-40",
+                reviewed ? "bg-muted/50 text-muted-foreground" : "bg-accent/10",
+                active && "bg-accent/30 text-foreground",
+              )}
+            >
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelect(card.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect(card.id);
+                  }
+                }}
+                className="flex min-h-0 min-w-0 flex-1 cursor-pointer flex-col text-left"
+              >
+                <p className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {reviewed ? t("flashcards.reviewed") : showBack ? t("flashcards.answer") : t("flashcards.question")}
+                </p>
+                <div className="mt-1.5 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 text-sm font-medium leading-snug break-words [overflow-wrap:anywhere]">
+                  {showBack ? card.back : card.front}
+                </div>
+              </div>
+              <div className="mt-2 grid shrink-0 grid-cols-2 gap-1">
+                <button
+                  type="button"
+                  disabled={reviewing}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onReview(card.id, 1);
+                  }}
+                  className="h-7 rounded-md border border-border bg-background/80 px-1 text-[10px] font-medium hover:bg-muted disabled:opacity-50"
+                >
+                  {t("flashcards.hard")}
+                </button>
+                <button
+                  type="button"
+                  disabled={reviewing}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onReview(card.id, 5);
+                  }}
+                  className="h-7 rounded-md bg-accent px-1 text-[10px] font-medium text-accent-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  {t("flashcards.easy")}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {canRight ? (
+        <button
+          type="button"
+          aria-label={t("flashcards.moreCards")}
+          onClick={() => scrollByDirection(1)}
+          className="absolute right-0 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card/95 text-foreground shadow-sm hover:bg-muted"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
       ) : null}
     </div>
   );

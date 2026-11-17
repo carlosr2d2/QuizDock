@@ -4,11 +4,18 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import {
+  Card,
+  listItemClass,
+  listRowHoverClass,
+  listRowSelectedClass,
+  surfaceListClass,
+} from "@/components/ui/card";
+import { checkboxClass, Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
 import { useT } from "@/lib/i18n/provider";
+import { cn } from "@/lib/utils";
 import type { TeamGroup, TeamMember } from "@/types/api";
 
 export function GroupsCard({
@@ -62,68 +69,94 @@ export function GroupsCard({
     event.currentTarget.reset();
   }
 
-  const selected = groups.find((group) => group.id === openId) ?? null;
-
   return (
-    <Card>
+    <div className="space-y-5">
       {canManage ? (
-        <form onSubmit={onCreate} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="min-w-0 flex-1 space-y-2">
-            <Label htmlFor="group-name">{t("common.name")}</Label>
-            <Input id="group-name" name="name" required minLength={2} placeholder={t("team.groupPlaceholder")} />
-          </div>
-          <Button type="submit" loading={create.isPending}>
-            {create.isPending ? t("team.creating") : t("team.createGroup")}
-          </Button>
-        </form>
+        <Card>
+          <form onSubmit={onCreate} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="min-w-0 flex-1 space-y-2">
+              <Label htmlFor="group-name">{t("common.name")}</Label>
+              <Input id="group-name" name="name" required minLength={2} placeholder={t("team.groupPlaceholder")} />
+            </div>
+            <Button type="submit" loading={create.isPending}>
+              {create.isPending ? t("team.creating") : t("team.createGroup")}
+            </Button>
+          </form>
+        </Card>
       ) : null}
-      {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       {groups.length ? (
-        <ul className="mt-5 divide-y divide-border rounded-xl border border-border">
-          {groups.map((group) => (
-            <li key={group.id}>
-              <div className="flex items-center justify-between gap-3 px-4 py-3">
-                <button
-                  type="button"
-                  className="min-w-0 flex-1 rounded-md px-1 py-0.5 text-left hover:bg-muted/70"
-                  onClick={() => setOpenId(openId === group.id ? null : group.id)}
-                >
-                  <p className="truncate text-sm font-medium">{group.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {group.member_count} {group.member_count === 1 ? t("exams.memberOne") : t("exams.memberOther")}
-                  </p>
-                </button>
-                {canManage ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => remove.mutate(group.id)}
-                    loading={remove.isPending && remove.variables === group.id}
-                  >
-                    {t("team.delete")}
-                  </Button>
-                ) : null}
-              </div>
-              {selected?.id === group.id ? (
-                <GroupMembersEditor
-                  key={group.id}
-                  group={group}
-                  members={members}
-                  canManage={canManage}
-                  saving={saveMembers.isPending}
-                  onSave={(userIds) => saveMembers.mutate({ groupId: group.id, userIds })}
+        <ul className={surfaceListClass}>
+          {groups.map((group) => {
+            const isSelected = openId === group.id;
+            const panelId = `group-panel-${group.id}`;
+            return (
+              <li
+                key={group.id}
+                className={cn(
+                  "relative transition-colors duration-200",
+                  isSelected ? listRowSelectedClass : "hover:bg-muted/40",
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute inset-y-0 left-0 w-0.5 bg-accent transition-opacity duration-200",
+                    isSelected ? "opacity-100" : "opacity-0",
+                  )}
                 />
-              ) : null}
-            </li>
-          ))}
+                <div className={cn("flex items-center justify-between gap-4", listItemClass)}>
+                  <button
+                    type="button"
+                    aria-expanded={isSelected}
+                    aria-controls={panelId}
+                    className={cn("min-w-0 flex-1 rounded-md px-1 py-0.5 text-left", listRowHoverClass)}
+                    onClick={() => setOpenId(isSelected ? null : group.id)}
+                  >
+                    <p className={cn("truncate text-sm font-medium", isSelected && "text-accent")}>{group.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {group.member_count} {group.member_count === 1 ? t("exams.memberOne") : t("exams.memberOther")}
+                    </p>
+                  </button>
+                  {canManage ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => remove.mutate(group.id)}
+                      loading={remove.isPending && remove.variables === group.id}
+                    >
+                      {t("team.delete")}
+                    </Button>
+                  ) : null}
+                </div>
+                <div
+                  id={panelId}
+                  className={cn(
+                    "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
+                    isSelected ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+                  )}
+                >
+                  <div className="min-h-0 overflow-hidden">
+                    <GroupMembersEditor
+                      group={group}
+                      members={members}
+                      canManage={canManage}
+                      saving={saveMembers.isPending && saveMembers.variables?.groupId === group.id}
+                      onSave={(userIds) => saveMembers.mutate({ groupId: group.id, userIds })}
+                    />
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       ) : (
-        <p className="mt-4 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {canManage ? t("team.groupHint") : t("team.noGroups")}
         </p>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -152,7 +185,7 @@ function GroupMembersEditor({
 
   if (!canManage) {
     return (
-      <ul className="space-y-1 border-t border-border px-4 py-3">
+      <ul className="space-y-1 border-t border-border px-5 py-3">
         {group.members.length ? (
           group.members.map((member) => (
             <li key={member.user_id} className="text-sm">
@@ -168,13 +201,20 @@ function GroupMembersEditor({
   }
 
   return (
-    <div className="space-y-3 border-t border-border px-4 py-3">
-      <ul className="space-y-2">
+    <div className="space-y-3 border-t border-border px-5 py-4">
+      <ul className="space-y-1">
         {members.map((member) => (
           <li key={member.user_id}>
-            <label className="flex cursor-pointer items-center gap-3 text-sm">
+            <label
+              className={cn(
+                "flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm",
+                listRowHoverClass,
+                selectedSet.has(member.user_id) && "bg-muted/50",
+              )}
+            >
               <input
                 type="checkbox"
+                className={checkboxClass}
                 checked={selectedSet.has(member.user_id)}
                 onChange={() => toggle(member.user_id)}
               />

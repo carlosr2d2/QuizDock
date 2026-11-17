@@ -2,6 +2,9 @@ import { InputHTMLAttributes, forwardRef } from "react";
 
 import { cn } from "@/lib/utils";
 
+export const checkboxClass =
+  "h-4 w-4 shrink-0 rounded border-border accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
     <input

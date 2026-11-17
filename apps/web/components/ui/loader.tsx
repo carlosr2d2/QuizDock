@@ -1,5 +1,6 @@
 "use client";
 
+import { CoverPlaceholder } from "@/components/document-cover";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n/provider";
 
@@ -124,7 +125,7 @@ export function ListLoader({ rows = 4, label }: { rows?: number; label?: string 
           key={index}
           className="flex items-center gap-4 rounded-xl border border-border bg-card px-5 py-4"
         >
-          <Skeleton className="h-[5.5rem] w-[4.1rem] shrink-0 rounded-md" />
+          <CoverPlaceholder loading />
           <div className="min-w-0 flex-1 space-y-2">
             <Skeleton className="h-4 w-2/3" />
             <Skeleton className="h-3 w-1/3" />

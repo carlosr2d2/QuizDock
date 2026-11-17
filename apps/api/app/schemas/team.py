@@ -22,6 +22,7 @@ class MemberRead(ORMModel):
     email: str
     full_name: str
     role: MembershipRole
+    last_seen_at: datetime | None = None
 
 
 class GroupCreate(BaseModel):

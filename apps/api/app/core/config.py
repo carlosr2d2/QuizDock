@@ -37,9 +37,9 @@ class Settings(BaseSettings):
     rag_candidate_k: int = 24
 
     llm_api_key: str = ""
-    llm_base_url: str = "https://api.openai.com/v1"
-    llm_model: str = "gpt-4o-mini"
-    llm_embedding_model: str = "text-embedding-3-small"
+    llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    llm_model: str = "gemini-2.5-flash"
+    llm_embedding_model: str = "gemini-embedding-001"
     llm_timeout_seconds: float = 90.0
 
     app_public_url: str = "http://localhost:3000"

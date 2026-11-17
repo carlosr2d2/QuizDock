@@ -7,6 +7,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 from app.models.exam import Question, QuestionKind
+from app.services.llm import present_exam_item
 
 _KIND_LABEL = {
     "es": {
@@ -87,8 +88,8 @@ def render_exam_pdf(*, title: str, questions: list[Question], locale: str = "es"
     for index, question in enumerate(questions, start=1):
         kind = QuestionKind.parse(question.kind)
         story.append(Paragraph(_safe(f"{index}. {labels.get(kind, '')}"), meta_style))
-        story.append(Paragraph(_safe(question.prompt), prompt_style))
-        options = question.options or []
+        prompt, options = present_exam_item(question.prompt, question.options or [])
+        story.append(Paragraph(_safe(prompt), prompt_style))
         for opt_index, option in enumerate(options):
             marker = chr(ord("A") + opt_index) if opt_index < 26 else str(opt_index + 1)
             story.append(Paragraph(_safe(f"{marker})  {option}"), option_style))

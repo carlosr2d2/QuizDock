@@ -55,9 +55,11 @@ async def get_context(
     if org_id is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Organization context required")
 
-    membership = await MembershipRepository(db).get(user.id, org_id)
+    memberships = MembershipRepository(db)
+    membership = await memberships.get(user.id, org_id)
     if membership is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organization")
+    await memberships.touch_last_seen(user.id, org_id)
 
     return RequestContext(user=user, organization_id=org_id, role=membership.role)
 

@@ -70,6 +70,17 @@ class DocumentRepository:
         await self.session.flush()
         return document
 
+    async def exists_filename(self, organization_id: UUID, filename: str) -> bool:
+        result = await self.session.execute(
+            select(Document.id)
+            .where(
+                Document.organization_id == organization_id,
+                func.lower(Document.filename) == filename.lower(),
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
     async def delete(self, document: Document) -> None:
         await self.session.delete(document)
 
@@ -623,7 +634,7 @@ class FlashcardRepository:
             )
             stmt = stmt.order_by(Flashcard.next_review_at.asc().nulls_first())
         else:
-            stmt = stmt.order_by(Flashcard.created_at.desc())
+            stmt = stmt.order_by(Flashcard.created_at.asc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 

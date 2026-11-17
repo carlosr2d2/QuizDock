@@ -7,7 +7,7 @@ import { AttemptRow } from "@/components/attempt-row";
 import { DocumentCover } from "@/components/document-cover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardTitle, surfaceListClass } from "@/components/ui/card";
+import { Card, CardDescription, CardTitle, listItemClass, surfaceListClass } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { ListLoader, Loader, ProgressBar } from "@/components/ui/loader";
@@ -138,7 +138,7 @@ function ExamRow({ exam, pending = false }: { exam: Exam; pending?: boolean }) {
           : t(`status.${exam.status === "archived" ? "archived" : exam.status}`);
 
   return (
-    <li className="flex items-center justify-between gap-4 px-5 py-4">
+    <li className={`flex items-center justify-between gap-4 ${listItemClass}`}>
       <div className="flex min-w-0 items-center gap-4">
         <DocumentCover
           documentId={exam.document_id}
@@ -215,10 +215,14 @@ function ExamRow({ exam, pending = false }: { exam: Exam; pending?: boolean }) {
         ) : exam.status === "generating" ? (
           <ProgressBar
             compact
-            className="w-36"
-            value={exam.generated_count ?? 0}
+            className="w-44"
+            value={Math.min((exam.generated_count ?? 0) + 1, exam.question_count || 1)}
             max={exam.question_count || 1}
-            label={t("documents.generating")}
+            showValue={false}
+            label={t("exams.creatingQuestion", {
+              current: Math.min((exam.generated_count ?? 0) + 1, exam.question_count || 1),
+              total: exam.question_count || 1,
+            })}
           />
         ) : null}
       </div>

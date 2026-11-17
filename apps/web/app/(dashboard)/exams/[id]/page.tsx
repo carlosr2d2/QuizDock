@@ -10,6 +10,7 @@ import { AttemptHistoryCard, AttemptRow } from "@/components/attempt-row";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
+import { checkboxClass } from "@/components/ui/input";
 import { PageLoader, Loader, ProgressBar } from "@/components/ui/loader";
 import { ErrorState } from "@/components/ui/error-state";
 import { apiDownload, apiFetch } from "@/lib/api";
@@ -139,7 +140,7 @@ function ExamPlayer() {
         hasCover={data.has_cover}
         kind={data.document_kind}
         title={data.document_title ?? data.title}
-        className="h-24 w-[4.5rem]"
+        size="md"
       />
       <div className="min-w-0">
         <h1 className="text-2xl font-semibold tracking-tight">{data.title}</h1>
@@ -179,18 +180,26 @@ function ExamPlayer() {
 
   if (data.status === "generating") {
     const total = data.question_count || 1;
-    const current = data.generated_count ?? 0;
-    const label =
-      current > 0
-        ? t("exams.creatingQuestion", { current, total })
-        : t("exams.preparingChunks");
+    const done = data.generated_count ?? 0;
+    const working = Math.min(done < total ? done + 1 : total, total);
     return (
       <div className="space-y-6">
         <Badge>{t("status.generating")}</Badge>
         {heading}
         <div className="max-w-lg rounded-xl border border-border bg-card p-5">
-          <ProgressBar value={current} max={total} label={label} />
-          <p className="mt-3 text-xs text-muted-foreground">{t("exams.generatingHint")}</p>
+          <p className="text-3xl font-semibold tabular-nums tracking-tight">
+            {t("common.of", { current: working, total })}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("exams.creatingQuestion", { current: working, total })}
+          </p>
+          <ProgressBar
+            className="mt-4"
+            value={working}
+            max={total}
+            label={t("exams.generatingHint")}
+            showValue={false}
+          />
         </div>
       </div>
     );
@@ -266,18 +275,13 @@ function ExamPlayer() {
                   : "border-destructive/30 bg-destructive/10",
               )}
             >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <p className="text-sm font-medium">
-                  {index + 1}. {item.prompt}
-                </p>
-                <Badge>{questionKindLabel(item.kind, t)}</Badge>
-              </div>
+              <QuestionHeader index={index + 1} prompt={item.prompt} kind={item.kind} />
               <p className={cn("mt-2 text-sm", item.is_correct ? "text-accent" : "text-destructive")}>
                 {item.is_correct ? t("exams.correct") : t("exams.incorrect")}
               </p>
               <AttemptAnswer item={item} />
               {item.explanation ? (
-                <p className="mt-2 text-sm text-muted-foreground">{item.explanation}</p>
+                <p className={cn("mt-2 text-sm text-muted-foreground", wrapTextClass)}>{item.explanation}</p>
               ) : null}
             </li>
           ))}
@@ -311,12 +315,7 @@ function ExamPlayer() {
       <ol className="space-y-6">
         {data.questions.map((question, index) => (
           <li key={question.id} className="rounded-xl border border-border bg-card p-5">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="text-sm font-medium">
-                {index + 1}. {question.prompt}
-              </p>
-              <Badge>{questionKindLabel(question.kind, t)}</Badge>
-            </div>
+            <QuestionHeader index={index + 1} prompt={question.prompt} kind={question.kind} />
             {question.kind === "multiple_choice" ? (
               <p className="mt-2 text-xs text-muted-foreground">{t("exams.selectAll")}</p>
             ) : null}
@@ -334,6 +333,28 @@ function ExamPlayer() {
         {submit.isPending ? t("exams.submitting") : data.attempt_count ? t("exams.submitAgain") : t("exams.submit")}
       </Button>
     </form>
+    </div>
+  );
+}
+
+const wrapTextClass = "min-w-0 break-words [overflow-wrap:anywhere]";
+
+function QuestionHeader({
+  index,
+  prompt,
+  kind,
+}: {
+  index: number;
+  prompt: string;
+  kind: QuestionKind | string | undefined;
+}) {
+  const t = useT();
+  return (
+    <div className="flex items-start gap-3">
+      <p className={cn("flex-1 text-sm font-medium", wrapTextClass)}>
+        {index}. {prompt}
+      </p>
+      <Badge className="shrink-0">{questionKindLabel(kind, t)}</Badge>
     </div>
   );
 }
@@ -387,17 +408,20 @@ function QuestionOptions({
       {question.options.map((option, optionIndex) => (
         <label
           key={`${question.id}-${optionIndex}`}
-          className="flex cursor-pointer items-start gap-3 rounded-md border border-transparent px-2 py-2 hover:bg-muted"
+          className={cn(
+            "flex cursor-pointer items-start gap-3 rounded-md border border-transparent px-2 py-2 transition-colors duration-200 hover:bg-muted/60",
+            (multi ? selected.includes(optionIndex) : value === optionIndex) && "border-accent/30 bg-accent/10",
+          )}
         >
           <input
             type={multi ? "checkbox" : "radio"}
-            className="mt-1"
+            className={cn("mt-1", checkboxClass)}
             name={question.id}
             checked={multi ? selected.includes(optionIndex) : value === optionIndex}
             onChange={() => (multi ? toggle(optionIndex) : onChange(optionIndex))}
             required={!multi}
           />
-          <span className="text-sm">{option}</span>
+          <span className={cn("flex-1 text-sm", wrapTextClass)}>{option}</span>
         </label>
       ))}
     </fieldset>
@@ -415,15 +439,19 @@ function AttemptAnswer({ item }: { item: QuestionResult }) {
   const empty = t("exams.noAnswer");
   if (item.is_correct) {
     return (
-      <p className="mt-2 text-sm text-muted-foreground">
+      <p className={cn("mt-2 text-sm text-muted-foreground", wrapTextClass)}>
         {t("exams.yourAnswer", { answer: formatChoices(item.options, selected, empty) })}
       </p>
     );
   }
   return (
     <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-      <p>{t("exams.yourAnswer", { answer: formatChoices(item.options, selected, empty) })}</p>
-      <p>{t("exams.correctChoice", { answer: formatChoices(item.options, correct, empty) })}</p>
+      <p className={wrapTextClass}>
+        {t("exams.yourAnswer", { answer: formatChoices(item.options, selected, empty) })}
+      </p>
+      <p className={wrapTextClass}>
+        {t("exams.correctChoice", { answer: formatChoices(item.options, correct, empty) })}
+      </p>
     </div>
   );
 }
@@ -466,7 +494,7 @@ function ExamPdfActions({ exam }: { exam: ExamDetail }) {
         <label className="flex max-w-xl cursor-pointer items-start gap-2 text-sm">
           <input
             type="checkbox"
-            className="mt-1"
+            className={cn("mt-1", checkboxClass)}
             checked={Boolean(exam.allow_pdf_download)}
             disabled={save.isPending}
             onChange={(event) => save.mutate(event.target.checked)}
@@ -661,9 +689,10 @@ function AssignPanel({
               <ul className="space-y-2">
             {available.map((member) => (
               <li key={member.user_id}>
-                <label className="flex cursor-pointer items-center gap-3 text-sm">
+                <label className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm transition-colors duration-200 hover:bg-muted/60">
                   <input
                     type="checkbox"
+                    className={checkboxClass}
                     checked={selected.includes(member.user_id)}
                     onChange={() => toggle(member.user_id)}
                   />

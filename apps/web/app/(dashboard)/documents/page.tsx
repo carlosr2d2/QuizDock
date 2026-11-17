@@ -9,11 +9,11 @@ import { useEffect, useRef, useState } from "react";
 import { DocumentCover } from "@/components/document-cover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardTitle, surfaceListClass } from "@/components/ui/card";
+import { Card, CardDescription, CardTitle, listItemClass, surfaceListClass } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { ListLoader, Loader, ProgressBar } from "@/components/ui/loader";
-import { Input } from "@/components/ui/input";
+import { checkboxClass, Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch, apiUpload } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/provider";
@@ -24,8 +24,10 @@ import type { CreditBalance, Document, Exam, GenerationJob, User } from "@/types
 const MIN_QUESTIONS = 1;
 const MAX_QUESTIONS = 50;
 const CREDIT_PER_QUESTION = 1;
-const FLASHCARD_COST = 12;
+const MIN_CARDS = 20;
+const MAX_CARDS = 40;
 const QUESTION_PRESETS = [5, 10, 15, 20, 30];
+const CARD_PRESETS = [20, 30, 40];
 
 export default function DocumentsPage() {
   const { t, locale } = useI18n();
@@ -34,7 +36,9 @@ export default function DocumentsPage() {
   const router = useRouter();
   const [actionError, setActionError] = useState<string | null>(null);
   const [examDoc, setExamDoc] = useState<Document | null>(null);
+  const [cardsDoc, setCardsDoc] = useState<Document | null>(null);
   const [questionCount, setQuestionCount] = useState(10);
+  const [cardCount, setCardCount] = useState(MIN_CARDS);
   const [allowPdfDownload, setAllowPdfDownload] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{
     filename: string;
@@ -124,14 +128,15 @@ export default function DocumentsPage() {
   });
 
   const generateCards = useMutation({
-    mutationFn: (documentId: string) =>
+    mutationFn: ({ documentId, cardCount: count }: { documentId: string; cardCount: number }) =>
       apiFetch<GenerationJob>("/api/v1/flashcards/generate", {
         method: "POST",
-        body: { document_id: documentId, card_count: FLASHCARD_COST },
+        body: { document_id: documentId, card_count: count },
       }),
-    onSuccess: (job) => {
+    onSuccess: (job, variables) => {
+      setCardsDoc(null);
       queryClient.invalidateQueries({ queryKey: ["credits"] });
-      router.push(`/flashcards?job=${job.id}`);
+      router.push(`/flashcards?job=${job.id}&document=${variables.documentId}`);
     },
     onError: (error: Error) => setActionError(error.message),
   });
@@ -141,17 +146,21 @@ export default function DocumentsPage() {
       apiFetch<void>(`/api/v1/documents/${documentId}`, { method: "DELETE" }),
     onSuccess: (_result, documentId) => {
       if (examDoc?.id === documentId) setExamDoc(null);
+      if (cardsDoc?.id === documentId) setCardsDoc(null);
       void queryClient.invalidateQueries({ queryKey: ["documents"] });
     },
     onError: (error: Error) => setActionError(error.message),
   });
 
-  const busyId = generateExam.variables?.documentId ?? generateCards.variables ?? remove.variables ?? null;
+  const busyId =
+    generateExam.variables?.documentId ?? generateCards.variables?.documentId ?? remove.variables ?? null;
   const balance = credits.data?.balance ?? 0;
   const examCost = questionCount * CREDIT_PER_QUESTION;
   const examCountValid = questionCount >= MIN_QUESTIONS && questionCount <= MAX_QUESTIONS;
   const canAffordExam = examCountValid && examCost <= balance;
-  const canAffordCards = FLASHCARD_COST <= balance;
+  const cardCountValid = cardCount >= MIN_CARDS && cardCount <= MAX_CARDS;
+  const cardCost = cardCount * CREDIT_PER_QUESTION;
+  const canAffordCards = cardCountValid && cardCost <= balance;
 
   return (
     <div className="space-y-8">
@@ -182,8 +191,16 @@ export default function DocumentsPage() {
               className="hidden"
               onChange={(event) => {
                 const file = event.target.files?.[0];
-                if (file) upload.mutate(file);
                 event.target.value = "";
+                if (!file) return;
+                const duplicate = documents.data?.some(
+                  (doc) => doc.filename.toLowerCase() === file.name.toLowerCase(),
+                );
+                if (duplicate) {
+                  setActionError(t("documents.duplicateFilename", { name: file.name }));
+                  return;
+                }
+                upload.mutate(file);
               }}
             />
             <Button type="button" onClick={() => inputRef.current?.click()} loading={upload.isPending}>
@@ -192,6 +209,8 @@ export default function DocumentsPage() {
           </div>
         ) : null}
       </div>
+
+      {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
 
       {uploadProgress ? (
         <Card>
@@ -268,7 +287,7 @@ export default function DocumentsPage() {
             <label className="flex cursor-pointer items-start gap-2 text-sm">
               <input
                 type="checkbox"
-                className="mt-1"
+                className={cn("mt-1", checkboxClass)}
                 checked={allowPdfDownload}
                 onChange={(event) => setAllowPdfDownload(event.target.checked)}
               />
@@ -305,6 +324,84 @@ export default function DocumentsPage() {
         </Card>
       ) : null}
 
+      {cardsDoc ? (
+        <Card>
+          <CardTitle>{t("documents.newFlashcards")}</CardTitle>
+          <CardDescription>
+            {t("documents.newFlashcardsBody", {
+              title: cardsDoc.title || cardsDoc.filename,
+              min: MIN_CARDS,
+            })}
+          </CardDescription>
+          <div className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="card-count">{t("documents.cardCount")}</Label>
+              <div className="flex flex-wrap gap-2">
+                {CARD_PRESETS.map((count) => (
+                  <Button
+                    key={count}
+                    type="button"
+                    size="sm"
+                    variant={cardCount === count ? "primary" : "outline"}
+                    onClick={() => setCardCount(count)}
+                  >
+                    {count}
+                  </Button>
+                ))}
+              </div>
+              <Input
+                id="card-count"
+                type="number"
+                min={MIN_CARDS}
+                max={MAX_CARDS}
+                value={cardCount}
+                onChange={(event) => {
+                  const next = Number(event.target.value);
+                  if (!Number.isFinite(next)) return;
+                  setCardCount(Math.min(MAX_CARDS, Math.max(MIN_CARDS, Math.round(next))));
+                }}
+                className="mt-2 max-w-[8rem]"
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("documents.costRange", {
+                  min: MIN_CARDS,
+                  max: MAX_CARDS,
+                  cost: cardCountValid ? cardCost : "—",
+                  balance,
+                })}
+                {` ${cardCost === 1 ? t("common.credit") : t("common.credits")}`}
+              </p>
+              {cardCountValid && !canAffordCards ? (
+                <p className="text-sm text-destructive">
+                  {t("documents.notEnoughCards", { count: cardCount })}{" "}
+                  <Link href="/account" className="font-medium underline">
+                    {t("documents.buyCredits")}
+                  </Link>
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                disabled={!canAffordCards || generateCards.isPending}
+                loading={generateCards.isPending}
+                onClick={() => {
+                  setActionError(null);
+                  generateCards.mutate({ documentId: cardsDoc.id, cardCount });
+                }}
+              >
+                {generateCards.isPending
+                  ? t("documents.generating")
+                  : t("documents.flashcardsCost", { cost: cardCountValid ? cardCost : "—" })}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setCardsDoc(null)} disabled={generateCards.isPending}>
+                {t("common.cancel")}
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
       {documents.isError ? (
         <ErrorState
           title={t("documents.loadError")}
@@ -316,7 +413,7 @@ export default function DocumentsPage() {
       ) : documents.data?.length ? (
         <ul className={surfaceListClass}>
           {documents.data.map((doc) => (
-            <li key={doc.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <li key={doc.id} className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${listItemClass}`}>
               <div className="flex min-w-0 items-center gap-4">
                 <DocumentCover
                   documentId={doc.id}
@@ -364,6 +461,7 @@ export default function DocumentsPage() {
                       disabled={busyId === doc.id}
                       onClick={() => {
                         setActionError(null);
+                        setCardsDoc(null);
                         setQuestionCount(10);
                         setExamDoc(doc);
                       }}
@@ -375,15 +473,16 @@ export default function DocumentsPage() {
                       size="sm"
                       variant="outline"
                       className="border-accent/40 text-accent hover:bg-accent/10 hover:text-accent"
-                      disabled={busyId === doc.id || !canAffordCards}
-                      loading={generateCards.isPending && generateCards.variables === doc.id}
+                      disabled={busyId === doc.id}
                       onClick={() => {
                         setActionError(null);
-                        generateCards.mutate(doc.id);
+                        setExamDoc(null);
+                        setCardCount(MIN_CARDS);
+                        setCardsDoc(doc);
                       }}
                     >
                       <Layers className="h-3.5 w-3.5" />
-                      {t("documents.flashcardsCost")}
+                      {t("documents.flashcardsCost", { cost: MIN_CARDS })}
                     </Button>
                   </>
                 ) : null}
@@ -414,7 +513,6 @@ export default function DocumentsPage() {
           description={canAuthor ? t("documents.emptyAuthor") : t("documents.emptyMember")}
         />
       )}
-      {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
     </div>
   );
 }
