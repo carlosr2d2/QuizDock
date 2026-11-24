@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { ChunkPicker } from "@/components/chunk-picker";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import { useT } from "@/lib/i18n/provider";
@@ -27,7 +28,7 @@ export function AppealCta({ attemptId, questionId, documentId, existing, classNa
 
   const chunks = useQuery({
     queryKey: ["document-chunks", documentId],
-    queryFn: () => apiFetch<DocumentChunkPreview[]>(`/api/v1/documents/${documentId}/chunks?limit=40`),
+    queryFn: () => apiFetch<DocumentChunkPreview[]>(`/api/v1/documents/${documentId}/chunks?limit=100`),
     enabled: Boolean(documentId) && open && !existing,
   });
 
@@ -52,10 +53,21 @@ export function AppealCta({ attemptId, questionId, documentId, existing, classNa
     },
   });
 
+  function selectChunk(nextId: string, chunk: DocumentChunkPreview | null) {
+    setChunkId(nextId);
+    if (chunk) {
+      setQuote(chunk.content.slice(0, 900));
+    } else if (!nextId) {
+      setQuote("");
+    }
+  }
+
   if (existing) {
     return (
       <div className={cn("mt-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2", className)}>
-        <p className="text-xs font-medium text-foreground">{t("appeals.statusLabel", { status: t(`appeals.status.${existing.status}`) })}</p>
+        <p className="text-xs font-medium text-foreground">
+          {t("appeals.statusLabel", { status: t(`appeals.status.${existing.status}`) })}
+        </p>
         <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{existing.student_argument}</p>
         <a href={`/appeals/${existing.id}`} className="mt-2 inline-block text-xs underline-offset-4 hover:underline">
           {t("appeals.viewMine")}
@@ -84,39 +96,23 @@ export function AppealCta({ attemptId, questionId, documentId, existing, classNa
           {documentId ? (
             <div className="space-y-2">
               <p className="text-xs font-medium text-foreground">{t("appeals.attachChunk")}</p>
-              {chunks.isLoading ? <p className="text-xs text-muted-foreground">{t("appeals.loadingChunks")}</p> : null}
-              {chunks.data?.length ? (
-                <select
-                  className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
-                  value={chunkId}
-                  onChange={(event) => {
-                    const next = event.target.value;
-                    setChunkId(next);
-                    const selected = chunks.data?.find((item) => item.id === next);
-                    if (selected && !quote.trim()) {
-                      setQuote(selected.content.slice(0, 500));
-                    }
-                  }}
-                >
-                  <option value="">{t("appeals.pickChunk")}</option>
-                  {chunks.data.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.page_start != null
-                        ? t("appeals.chunkOptionPage", { page: item.page_start, preview: item.content.slice(0, 60) })
-                        : t("appeals.chunkOption", { preview: item.content.slice(0, 72) })}
-                    </option>
-                  ))}
-                </select>
-              ) : chunks.data ? (
-                <p className="text-xs text-muted-foreground">{t("appeals.noChunks")}</p>
-              ) : null}
-              <textarea
-                className="min-h-16 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                value={quote}
-                onChange={(event) => setQuote(event.target.value)}
-                placeholder={t("appeals.quotePlaceholder")}
-                maxLength={2000}
+              <p className="text-xs text-muted-foreground">{t("appeals.attachChunkHint")}</p>
+              <ChunkPicker
+                chunks={chunks.data ?? []}
+                value={chunkId}
+                onChange={selectChunk}
+                loading={chunks.isLoading}
               />
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-foreground">{t("appeals.quoteLabel")}</span>
+                <textarea
+                  className="min-h-20 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={quote}
+                  onChange={(event) => setQuote(event.target.value)}
+                  placeholder={t("appeals.quotePlaceholder")}
+                  maxLength={2000}
+                />
+              </label>
             </div>
           ) : null}
           {create.error ? <p className="text-sm text-destructive">{create.error.message}</p> : null}

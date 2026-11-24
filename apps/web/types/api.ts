@@ -607,6 +607,7 @@ export type AppealAttachment = {
 };
 
 export type AppealDetail = Appeal & {
+  document_id?: string | null;
   evidence: AppealEvidence[];
   comments: AppealComment[];
   resolution?: AppealResolution | null;

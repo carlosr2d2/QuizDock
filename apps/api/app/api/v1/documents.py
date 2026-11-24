@@ -93,7 +93,7 @@ async def delete_document(
 @router.get("/{document_id}/chunks", response_model=list[DocumentChunkRead])
 async def list_document_chunks(
     document_id: UUID,
-    limit: int = 40,
+    limit: int = 100,
     ctx: RequestContext = Depends(get_context),
     db: AsyncSession = Depends(get_db),
 ) -> list[DocumentChunkRead]:

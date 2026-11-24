@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 
 import { AppealThread } from "@/components/appeal-thread";
+import { ChunkPicker } from "@/components/chunk-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
@@ -29,15 +30,20 @@ export default function AppealDetailPage() {
     queryFn: () => apiFetch<AppealDetail>(`/api/v1/appeals/${appealId}`),
   });
 
+  const canAttach =
+    detail.data?.status === "needs_info" ||
+    detail.data?.status === "pending" ||
+    detail.data?.status === "in_review";
   const documentId =
-    typeof detail.data?.system_evidence_snapshot?.document_id === "string"
+    detail.data?.document_id ||
+    (typeof detail.data?.system_evidence_snapshot?.document_id === "string"
       ? detail.data.system_evidence_snapshot.document_id
-      : null;
+      : null);
 
   const chunks = useQuery({
     queryKey: ["document-chunks", documentId],
-    queryFn: () => apiFetch<DocumentChunkPreview[]>(`/api/v1/documents/${documentId}/chunks?limit=40`),
-    enabled: Boolean(documentId) && detail.data?.status === "needs_info",
+    queryFn: () => apiFetch<DocumentChunkPreview[]>(`/api/v1/documents/${documentId}/chunks?limit=100`),
+    enabled: Boolean(documentId) && Boolean(canAttach),
   });
 
   const addEvidence = useMutation({
@@ -58,6 +64,15 @@ export default function AppealDetailPage() {
       await queryClient.invalidateQueries({ queryKey: ["appeals", "mine"] });
     },
   });
+
+  function selectChunk(nextId: string, chunk: DocumentChunkPreview | null) {
+    setChunkId(nextId);
+    if (chunk) {
+      setQuote(chunk.content.slice(0, 900));
+    } else if (!nextId) {
+      setQuote("");
+    }
+  }
 
   if (detail.isLoading) {
     return <PageLoader label={t("appeals.loadingDetail")} />;
@@ -123,33 +138,28 @@ export default function AppealDetailPage() {
           <p className="text-sm text-muted-foreground">{t("appeals.noEvidence")}</p>
         )}
 
-        {item.status === "needs_info" || item.status === "pending" || item.status === "in_review" ? (
-          <div className="space-y-2 border-t border-border pt-3">
-            {chunks.data?.length ? (
-              <select
-                className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm"
+        {canAttach ? (
+          <div className="space-y-3 border-t border-border pt-3">
+            <p className="text-xs text-muted-foreground">{t("appeals.attachChunkHint")}</p>
+            {documentId ? (
+              <ChunkPicker
+                chunks={chunks.data ?? []}
                 value={chunkId}
-                onChange={(event) => {
-                  const next = event.target.value;
-                  setChunkId(next);
-                  const selected = chunks.data?.find((row) => row.id === next);
-                  if (selected && !quote.trim()) setQuote(selected.content.slice(0, 500));
-                }}
-              >
-                <option value="">{t("appeals.pickChunk")}</option>
-                {chunks.data.map((row) => (
-                  <option key={row.id} value={row.id}>
-                    {row.content.slice(0, 72)}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-            <textarea
-              className="min-h-20 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              value={quote}
-              onChange={(event) => setQuote(event.target.value)}
-              placeholder={t("appeals.quotePlaceholder")}
-            />
+                onChange={selectChunk}
+                loading={chunks.isLoading}
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground">{t("appeals.noChunks")}</p>
+            )}
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-foreground">{t("appeals.quoteLabel")}</span>
+              <textarea
+                className="min-h-20 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={quote}
+                onChange={(event) => setQuote(event.target.value)}
+                placeholder={t("appeals.quotePlaceholder")}
+              />
+            </label>
             <textarea
               className="min-h-16 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               value={argument}

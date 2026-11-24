@@ -191,8 +191,18 @@ class AppealService:
         actions = await self.repo.list_actions(case.id, organization_id)
         student = await self.users.get_by_id(case.student_user_id)
         authors = await self.exams.users_by_ids({row.author_user_id for row in comments})
+        exam = await self.exams.get(case.exam_id, organization_id)
+        document_id = exam.document_id if exam and exam.document_id else None
+        if document_id is None and case.system_evidence_snapshot:
+            raw_document = case.system_evidence_snapshot.get("document_id")
+            if raw_document:
+                try:
+                    document_id = UUID(str(raw_document))
+                except ValueError:
+                    document_id = None
         return AppealDetail(
             **_read(case, student).model_dump(),
+            document_id=document_id,
             evidence=[AppealEvidenceRead.model_validate(item) for item in evidence],
             comments=[_comment_read(item, authors.get(item.author_user_id)) for item in comments],
             resolution=AppealResolutionRead.model_validate(resolution) if resolution else None,
@@ -394,7 +404,7 @@ class AppealService:
         organization_id: UUID,
         document_id: UUID,
         *,
-        limit: int = 40,
+        limit: int = 100,
     ) -> list[DocumentChunkRead]:
         document = await self.documents.get(document_id, organization_id)
         if document is None:
@@ -404,13 +414,13 @@ class AppealService:
             DocumentChunkRead(
                 id=row.id,
                 position=row.position,
-                content=row.content[:500],
+                content=row.content[:900],
                 page_start=row.page_start,
                 page_end=row.page_end,
                 chapter=row.chapter,
                 section=row.section,
             )
-            for row in rows[: max(1, min(limit, 100))]
+            for row in rows[: max(1, min(limit, 200))]
         ]
 
     async def _attach_evidence(

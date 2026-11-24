@@ -114,6 +114,7 @@ class AppealRead(ORMModel):
 
 
 class AppealDetail(AppealRead):
+    document_id: UUID | None = None
     evidence: list[AppealEvidenceRead] = Field(default_factory=list)
     comments: list[AppealCommentRead] = Field(default_factory=list)
     resolution: AppealResolutionRead | None = None
