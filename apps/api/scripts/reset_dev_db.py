@@ -32,6 +32,7 @@ Session = async_sessionmaker(engine, expire_on_commit=False)
 
 TABLES = [
     "audit_events",
+    "ai_decision_events",
     "payment_orders",
     "error_reports",
     "credit_transactions",
@@ -42,6 +43,8 @@ TABLES = [
     "exam_assignments",
     "answer_references",
     "question_evidence",
+    "document_chat_messages",
+    "document_conversations",
     "exam_attempts",
     "questions",
     "exams",

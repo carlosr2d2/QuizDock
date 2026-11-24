@@ -136,6 +136,41 @@ export type Evidence = {
   source?: string | null;
 };
 
+export type ChatCitation = {
+  chunk_id?: string | null;
+  quote: string;
+  page_start?: number | null;
+  page_end?: number | null;
+  chapter?: string | null;
+  section?: string | null;
+  confidence?: number | null;
+};
+
+export type ChatMessage = {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant" | "system" | string;
+  content: string;
+  citations: ChatCitation[];
+  refusal: boolean;
+  model?: string | null;
+  created_at: string;
+};
+
+export type ChatSession = {
+  id: string;
+  document_id: string;
+  user_id: string;
+  exam_id?: string | null;
+  title?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChatSessionDetail = ChatSession & {
+  messages: ChatMessage[];
+};
+
 export type QuestionResult = {
   question_id: string;
   prompt: string;

@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { BookOpen, Layers, Trash2 } from "lucide-react";
+import { BookOpen, Layers, MessageSquare, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { DocumentCover } from "@/components/document-cover";
@@ -469,6 +469,12 @@ export default function DocumentsPage() {
                       <BookOpen className="h-3.5 w-3.5" />
                       {t("documents.exam")}
                     </Button>
+                    <Link href={`/documents/${doc.id}/chat`}>
+                      <Button size="sm" variant="outline" disabled={busyId === doc.id}>
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        {t("documents.chat")}
+                      </Button>
+                    </Link>
                     <Button
                       size="sm"
                       variant="outline"

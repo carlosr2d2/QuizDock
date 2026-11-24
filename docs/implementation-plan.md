@@ -58,14 +58,14 @@ Tareas:
 
 ---
 
-## Incremento 4 — Document chat MVP (Fase 4)
+## Incremento 4 — Document chat MVP (Fase 4) ✅
 
-1. Models conversation/message.  
-2. `DocumentChatService` fail-closed.  
-3. APIs + Celery si latencia alta.  
-4. UI chat.  
-5. Créditos/límites.  
-6. AiDecisionEvent básico.
+1. [x] Models conversation/message (`0022`).  
+2. [x] `DocumentChatService` fail-closed + CitationEngine.  
+3. [x] APIs sync `/documents/{id}/chat/...`.  
+4. [x] UI chat en `documents/[id]/chat`.  
+5. [x] Créditos (`credit_cost_per_chat_message`).  
+6. [x] `AiDecisionEvent` básico.
 
 ---
 
