@@ -40,6 +40,8 @@ TABLES = [
     "group_members",
     "groups",
     "exam_assignments",
+    "answer_references",
+    "question_evidence",
     "exam_attempts",
     "questions",
     "exams",
