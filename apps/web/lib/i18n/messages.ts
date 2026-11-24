@@ -349,6 +349,9 @@ export const es = {
     loadingExam: "Cargando evaluación…",
     openError: "No se pudo abrir la evaluación",
     notFound: "No encontrado",
+    goneTitle: "Este examen ya no existe",
+    goneBody:
+      "Puede haberse borrado tras un reset de datos, o el enlace es antiguo. Vuelve al listado o genera uno nuevo desde Documentos.",
     assignedPending: "Asignado por tu empresa · pendiente",
     creatingQuestion: "Creando pregunta {current} de {total}",
     preparingChunks: "Preparando el documento y los fragmentos…",
@@ -1107,6 +1110,9 @@ export const en: LeafStrings<typeof es> = {
     loadingExam: "Loading assessment…",
     openError: "Could not open the assessment",
     notFound: "Not found",
+    goneTitle: "This exam no longer exists",
+    goneBody:
+      "It may have been removed after a data reset, or this link is outdated. Go back to the list or generate a new one from Documents.",
     assignedPending: "Assigned by your company · pending",
     creatingQuestion: "Creating question {current} of {total}",
     preparingChunks: "Preparing the document and chunks…",

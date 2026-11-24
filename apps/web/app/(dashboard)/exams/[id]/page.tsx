@@ -14,8 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { checkboxClass } from "@/components/ui/input";
 import { PageLoader, Loader, ProgressBar } from "@/components/ui/loader";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
-import { apiDownload, apiFetch } from "@/lib/api";
+import { ApiError, apiDownload, apiFetch } from "@/lib/api";
 import { useI18n, useT } from "@/lib/i18n/provider";
 import { cn, formatDateTime, formatScore } from "@/lib/utils";
 import type {
@@ -141,6 +142,24 @@ function ExamPlayer() {
     return <PageLoader label={t("exams.loadingExam")} />;
   }
   if (exam.error || !exam.data) {
+    const missing =
+      (exam.error instanceof ApiError && exam.error.status === 404) ||
+      (!exam.error && !exam.data);
+    if (missing) {
+      return (
+        <div className="space-y-6">
+          <EmptyState title={t("exams.goneTitle")} description={t("exams.goneBody")} />
+          <div className="flex flex-wrap gap-2">
+            <Link href="/exams">
+              <Button>{t("exams.backExams")}</Button>
+            </Link>
+            <Link href="/documents">
+              <Button variant="outline">{t("exams.backDocuments")}</Button>
+            </Link>
+          </div>
+        </div>
+      );
+    }
     return (
       <ErrorState
         title={t("exams.openError")}
