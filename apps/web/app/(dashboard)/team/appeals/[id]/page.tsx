@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
+import { AppealAiCard } from "@/components/appeal-ai-card";
 import { AppealThread } from "@/components/appeal-thread";
 import { PersonalWorkspaceHint } from "@/components/team/personal-workspace-hint";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,10 @@ export default function TeamAppealDetailPage() {
     queryKey: ["appeals", appealId],
     queryFn: () => apiFetch<AppealDetail>(`/api/v1/appeals/${appealId}`),
     enabled: !isPersonal,
+    refetchInterval: (query) => {
+      const status = query.state.data?.ai_recommendation?.status;
+      return status === "queued" || status === "running" ? 1500 : false;
+    },
   });
 
   const markReview = useMutation({
@@ -110,6 +115,10 @@ export default function TeamAppealDetailPage() {
         <p className="text-sm">{item.student_argument}</p>
       </section>
 
+      {canResolve || snapshot?.role === "auditor" ? (
+        <AppealAiCard appealId={appealId} detail={item} canRequest={canResolve && open} />
+      ) : null}
+
       {snapshotQuote ? (
         <section className="space-y-2 rounded-xl border border-border bg-card p-5">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -161,6 +170,20 @@ export default function TeamAppealDetailPage() {
               onClick={() => markReview.mutate()}
             >
               {t("appeals.markReview")}
+            </Button>
+          ) : null}
+          {item.ai_recommendation?.status === "ready" && item.ai_recommendation.recommendation ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                if (!rationale.trim() && item.ai_recommendation?.rationale) {
+                  setRationale(item.ai_recommendation.rationale);
+                }
+              }}
+            >
+              {t("appeals.aiUseRationale")}
             </Button>
           ) : null}
           <div className="flex flex-wrap gap-2">

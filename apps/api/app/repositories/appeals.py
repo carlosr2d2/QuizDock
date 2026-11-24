@@ -5,8 +5,10 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.ai_audit import AiDecisionEvent
 from app.models.appeal import (
     AppealActionLog,
+    AppealAiRecommendation,
     AppealCase,
     AppealComment,
     AppealEvidence,
@@ -141,3 +143,36 @@ class AppealRepository:
             .order_by(AppealComment.created_at.asc())
         )
         return list(result.scalars().all())
+
+    async def add_ai_recommendation(self, row: AppealAiRecommendation) -> AppealAiRecommendation:
+        self.session.add(row)
+        await self.session.flush()
+        return row
+
+    async def get_ai_recommendation(
+        self, recommendation_id: UUID, organization_id: UUID | None = None
+    ) -> AppealAiRecommendation | None:
+        conditions = [AppealAiRecommendation.id == recommendation_id]
+        if organization_id is not None:
+            conditions.append(AppealAiRecommendation.organization_id == organization_id)
+        result = await self.session.execute(select(AppealAiRecommendation).where(*conditions))
+        return result.scalar_one_or_none()
+
+    async def latest_ai_recommendation(
+        self, appeal_id: UUID, organization_id: UUID
+    ) -> AppealAiRecommendation | None:
+        result = await self.session.execute(
+            select(AppealAiRecommendation)
+            .where(
+                AppealAiRecommendation.appeal_id == appeal_id,
+                AppealAiRecommendation.organization_id == organization_id,
+            )
+            .order_by(AppealAiRecommendation.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def add_decision(self, row: AiDecisionEvent) -> AiDecisionEvent:
+        self.session.add(row)
+        await self.session.flush()
+        return row

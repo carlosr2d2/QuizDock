@@ -34,6 +34,13 @@ class AppealDecision(StrEnum):
     NEEDS_INFO = "needs_info"
 
 
+class AppealAiStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    READY = "ready"
+    FAILED = "failed"
+
+
 class AppealCase(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "appeal_cases"
 
@@ -122,7 +129,46 @@ class AppealResolution(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     rationale: Mapped[str] = mapped_column(Text, default="")
     score_adjustment: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ai_recommendation_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("appeal_ai_recommendations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     resolved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AppealAiRecommendation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "appeal_ai_recommendations"
+
+    organization_id: Mapped[UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        index=True,
+    )
+    appeal_id: Mapped[UUID] = mapped_column(
+        ForeignKey("appeal_cases.id", ondelete="CASCADE"),
+        index=True,
+    )
+    requested_by_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+    )
+    status: Mapped[AppealAiStatus] = mapped_column(
+        str_enum(AppealAiStatus, "appeal_ai_status", length=32),
+        default=AppealAiStatus.QUEUED,
+        index=True,
+    )
+    recommendation: Mapped[AppealDecision | None] = mapped_column(
+        str_enum(AppealDecision, "appeal_ai_decision", length=32),
+        nullable=True,
+    )
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    ambiguity: Mapped[bool] = mapped_column(default=False)
+    alt_chunk_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    system_quote: Mapped[str | None] = mapped_column(Text, nullable=True)
+    student_quote: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model: Mapped[str] = mapped_column(String(120), default="")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    credit_cost: Mapped[int] = mapped_column(default=0)
 
 
 class AppealActionLog(UUIDPrimaryKeyMixin, Base):

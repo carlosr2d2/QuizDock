@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.models.appeal import (
     AppealActionLog,
+    AppealAiStatus,
     AppealCase,
     AppealComment,
     AppealDecision,
@@ -40,6 +41,7 @@ from app.schemas.appeals import (
     AppealStatusUpdate,
     DocumentChunkRead,
 )
+from app.services.appeal_ai import _ai_read
 from app.services.appeal_state import assert_transition, is_open
 from app.services.errors import ConflictError, DomainError, ForbiddenError, NotFoundError
 from app.services.generation import answer_indices, question_correct_indices
@@ -187,6 +189,7 @@ class AppealService:
         self._assert_can_view(case, user_id, role)
         evidence = await self.repo.list_evidence(case.id, organization_id)
         comments = await self.repo.list_comments(case.id, organization_id)
+        ai_recommendation = await self.repo.latest_ai_recommendation(case.id, organization_id)
         resolution = await self.repo.get_resolution(case.id, organization_id)
         actions = await self.repo.list_actions(case.id, organization_id)
         student = await self.users.get_by_id(case.student_user_id)
@@ -205,6 +208,7 @@ class AppealService:
             document_id=document_id,
             evidence=[AppealEvidenceRead.model_validate(item) for item in evidence],
             comments=[_comment_read(item, authors.get(item.author_user_id)) for item in comments],
+            ai_recommendation=_ai_read(ai_recommendation) if ai_recommendation else None,
             resolution=AppealResolutionRead.model_validate(resolution) if resolution else None,
             actions=[AppealActionRead.model_validate(item) for item in actions],
         )
@@ -381,6 +385,7 @@ class AppealService:
             raise ConflictError("La apelación ya tiene una resolución.")
         case.status = target
         if decision != AppealDecision.NEEDS_INFO:
+            latest_ai = await self.repo.latest_ai_recommendation(case.id, organization_id)
             await self.repo.add_resolution(
                 AppealResolution(
                     organization_id=organization_id,
@@ -388,6 +393,9 @@ class AppealService:
                     resolver_user_id=user_id,
                     decision=decision,
                     rationale=payload.rationale.strip(),
+                    ai_recommendation_id=(
+                        latest_ai.id if latest_ai and latest_ai.status == AppealAiStatus.READY else None
+                    ),
                 )
             )
         await self._log(

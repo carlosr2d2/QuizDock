@@ -606,10 +606,30 @@ export type AppealAttachment = {
   size: number;
 };
 
+export type AppealAiRecommendation = {
+  id: string;
+  appeal_id: string;
+  requested_by_user_id: string;
+  status: "queued" | "running" | "ready" | "failed" | string;
+  recommendation?: "accepted" | "rejected" | "needs_info" | string | null;
+  confidence?: number | null;
+  rationale: string;
+  ambiguity: boolean;
+  alt_chunk_ids: string[];
+  system_quote?: string | null;
+  student_quote?: string | null;
+  model: string;
+  error_message?: string | null;
+  credit_cost: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AppealDetail = Appeal & {
   document_id?: string | null;
   evidence: AppealEvidence[];
   comments: AppealComment[];
+  ai_recommendation?: AppealAiRecommendation | null;
   resolution?: AppealResolution | null;
   actions: AppealAction[];
 };

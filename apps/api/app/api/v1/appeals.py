@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import RequestContext, get_context, get_db, require_roles
 from app.models import MembershipRole
 from app.schemas.appeals import (
+    AppealAiRecommendationRead,
     AppealAttachmentRead,
     AppealCommentCreate,
     AppealCreate,
@@ -15,6 +16,7 @@ from app.schemas.appeals import (
     AppealResolveRequest,
     AppealStatusUpdate,
 )
+from app.services.appeal_ai import AppealAiService
 from app.services.appeals import AppealService
 
 router = APIRouter(prefix="/appeals", tags=["appeals"])
@@ -120,4 +122,15 @@ async def resolve_appeal(
 ) -> AppealDetail:
     return await AppealService(db).resolve(
         ctx.organization_id, ctx.user.id, ctx.role, appeal_id, payload
+    )
+
+
+@router.post("/{appeal_id}/ai-review", response_model=AppealAiRecommendationRead, status_code=202)
+async def request_ai_review(
+    appeal_id: UUID,
+    ctx: RequestContext = Depends(require_roles(*REVIEW_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> AppealAiRecommendationRead:
+    return await AppealAiService(db).request_review(
+        ctx.organization_id, ctx.user.id, ctx.role, appeal_id
     )

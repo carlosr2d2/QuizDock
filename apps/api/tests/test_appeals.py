@@ -48,6 +48,8 @@ class FakeAppealRepo:
         self.resolutions: list[AppealResolution] = []
         self.actions: list[AppealActionLog] = []
         self.comments: list[AppealComment] = []
+        self.ai_rows: list = []
+        self.decisions: list = []
 
     async def add(self, row: AppealCase) -> AppealCase:
         ensure_id(row)
@@ -154,6 +156,40 @@ class FakeAppealRepo:
             for row in self.comments
             if row.appeal_id == appeal_id and row.organization_id == organization_id
         ]
+
+    async def add_ai_recommendation(self, row):
+        ensure_id(row)
+        if getattr(row, "created_at", None) is None:
+            row.created_at = datetime.now(timezone.utc)
+        if getattr(row, "updated_at", None) is None:
+            row.updated_at = row.created_at
+        self.ai_rows.append(row)
+        return row
+
+    async def get_ai_recommendation(self, recommendation_id, organization_id=None):
+        for row in self.ai_rows:
+            if row.id != recommendation_id:
+                continue
+            if organization_id is not None and row.organization_id != organization_id:
+                continue
+            return row
+        return None
+
+    async def latest_ai_recommendation(self, appeal_id, organization_id):
+        rows = [
+            row
+            for row in self.ai_rows
+            if row.appeal_id == appeal_id and row.organization_id == organization_id
+        ]
+        rows.sort(key=lambda item: item.created_at, reverse=True)
+        return rows[0] if rows else None
+
+    async def add_decision(self, row):
+        ensure_id(row)
+        if getattr(row, "created_at", None) is None:
+            row.created_at = datetime.now(timezone.utc)
+        self.decisions.append(row)
+        return row
 
 
 class FakeEvidenceRepo:

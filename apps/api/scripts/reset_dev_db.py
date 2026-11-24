@@ -44,6 +44,7 @@ TABLES = [
     "appeal_action_logs",
     "appeal_comments",
     "appeal_resolutions",
+    "appeal_ai_recommendations",
     "appeal_evidence",
     "appeal_cases",
     "answer_references",

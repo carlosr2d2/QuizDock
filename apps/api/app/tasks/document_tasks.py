@@ -33,3 +33,14 @@ def generate_flashcards(job_id: str) -> str:
 
     run_worker_job(_job)
     return job_id
+
+
+@celery_app.task(name="appeals.ai_review")
+def appeal_ai_review(recommendation_id: str) -> str:
+    from app.services.appeal_ai import AppealAiService
+
+    async def _job(session: AsyncSession) -> None:
+        await AppealAiService(session).fulfill(UUID(recommendation_id))
+
+    run_worker_job(_job)
+    return recommendation_id

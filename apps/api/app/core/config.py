@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     credit_cost_per_question: int = 1
     credit_cost_per_flashcard: int = 1
     credit_cost_per_chat_message: int = 1
+    credit_cost_per_appeal_review: int = 1
     generation_max_chars: int = 24000
     rag_chunk_size: int = 1200
     rag_chunk_overlap: int = 200

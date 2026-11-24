@@ -59,6 +59,25 @@ class AppealCommentRead(ORMModel):
     author_email: str = ""
 
 
+class AppealAiRecommendationRead(ORMModel):
+    id: UUID
+    appeal_id: UUID
+    requested_by_user_id: UUID
+    status: str
+    recommendation: str | None = None
+    confidence: float | None = None
+    rationale: str = ""
+    ambiguity: bool = False
+    alt_chunk_ids: list[str] = Field(default_factory=list)
+    system_quote: str | None = None
+    student_quote: str | None = None
+    model: str = ""
+    error_message: str | None = None
+    credit_cost: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
 class AppealEvidenceRead(ORMModel):
     id: UUID
     appeal_id: UUID
@@ -117,6 +136,7 @@ class AppealDetail(AppealRead):
     document_id: UUID | None = None
     evidence: list[AppealEvidenceRead] = Field(default_factory=list)
     comments: list[AppealCommentRead] = Field(default_factory=list)
+    ai_recommendation: AppealAiRecommendationRead | None = None
     resolution: AppealResolutionRead | None = None
     actions: list[AppealActionRead] = Field(default_factory=list)
 
