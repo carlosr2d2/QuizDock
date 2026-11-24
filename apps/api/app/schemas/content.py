@@ -181,6 +181,22 @@ class AttemptSubmit(BaseModel):
     answers: dict[str, int | list[int]] = Field(default_factory=dict)
 
 
+class EvidenceRead(BaseModel):
+    quote: str
+    document_id: UUID | None = None
+    document_title: str | None = None
+    page_start: int | None = None
+    page_end: int | None = None
+    chapter: str | None = None
+    section: str | None = None
+    confidence: float = 0.0
+    relevance: float | None = None
+    model: str | None = None
+    generated_at: datetime | None = None
+    verified: bool = True
+    source: str | None = None
+
+
 class QuestionResult(BaseModel):
     question_id: UUID
     prompt: str
@@ -192,6 +208,7 @@ class QuestionResult(BaseModel):
     correct_indices: list[int] = Field(default_factory=list)
     explanation: str | None
     is_correct: bool
+    evidence: EvidenceRead | None = None
 
 
 class AttemptRead(BaseModel):

@@ -7,6 +7,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 
 import { DocumentCover } from "@/components/document-cover";
 import { AttemptHistoryCard, AttemptRow } from "@/components/attempt-row";
+import { EvidencePanel } from "@/components/evidence-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
@@ -280,9 +281,11 @@ function ExamPlayer() {
                 {item.is_correct ? t("exams.correct") : t("exams.incorrect")}
               </p>
               <AttemptAnswer item={item} />
-              {item.explanation ? (
-                <p className={cn("mt-2 text-sm text-muted-foreground", wrapTextClass)}>{item.explanation}</p>
-              ) : null}
+              <EvidencePanel
+                evidence={item.evidence}
+                explanation={item.explanation}
+                locale={locale}
+              />
             </li>
           ))}
         </ol>

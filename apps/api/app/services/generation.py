@@ -54,6 +54,7 @@ from app.schemas.content import (
 from app.services.audit import AuditService
 from app.services.billing import BillingService
 from app.services.errors import ConflictError, DomainError, ForbiddenError, NotFoundError
+from app.services.evidence import EvidenceService
 from app.services.exam_pdf import render_exam_pdf
 from app.services.progress import (
     KIND_ACCURACY_ATTEMPT_LIMIT,
@@ -159,6 +160,7 @@ class ExamService:
         self.orgs = OrganizationRepository(session)
         self.billing = BillingService(session)
         self.audit = AuditService(session)
+        self.evidence = EvidenceService(session)
 
     async def list_reads(
         self,
@@ -554,25 +556,32 @@ class ExamService:
                 nonlocal saved
                 prompt, options = present_exam_item(item.prompt, item.options)
                 async with lock:
-                    await self.repo.add_questions(
-                        [
-                            Question(
-                                exam_id=exam.id,
-                                prompt=prompt,
-                                kind=QuestionKind.parse(item.kind),
-                                options=options,
-                                correct_index=(
-                                    item.correct_index
-                                    if item.correct_index is not None
-                                    else item.correct_indices[0]
-                                ),
-                                correct_indices=item.correct_indices,
-                                explanation=polish_exam_text(item.explanation) if item.explanation else item.explanation,
-                                difficulty=item.difficulty,
-                                position=saved,
-                                source_chunk_position=item.source_chunk_position,
-                            )
-                        ]
+                    question = Question(
+                        exam_id=exam.id,
+                        prompt=prompt,
+                        kind=QuestionKind.parse(item.kind),
+                        options=options,
+                        correct_index=(
+                            item.correct_index
+                            if item.correct_index is not None
+                            else item.correct_indices[0]
+                        ),
+                        correct_indices=item.correct_indices,
+                        explanation=polish_exam_text(item.explanation) if item.explanation else item.explanation,
+                        difficulty=item.difficulty,
+                        position=saved,
+                        source_chunk_position=item.source_chunk_position,
+                    )
+                    await self.repo.add_questions([question])
+                    await self.evidence.create_from_generation(
+                        question=question,
+                        organization_id=exam.organization_id,
+                        document_id=document.id,
+                        chunk_position=item.source_chunk_position,
+                        anchor=getattr(item, "anchor", "") or "",
+                        claim=getattr(item, "claim", "") or "",
+                        explanation=question.explanation or "",
+                        model=settings.llm_model,
                     )
                     saved += 1
                     exam.generated_count = max(exam.generated_count, saved)
@@ -661,6 +670,20 @@ class ExamService:
             answers=serialized_answers,
         )
         await self.repo.add_attempt(attempt)
+        document = await self.documents.get_by_id(exam.document_id) if exam.document_id else None
+        await self.evidence.snapshot_attempt(
+            attempt=attempt,
+            exam=exam,
+            document=document,
+        )
+        evidence_reads = await self.evidence.reads_for_attempt(
+            organization_id=organization_id,
+            attempt_id=attempt.id,
+            question_ids=[question.id for question in exam.questions],
+            document=document,
+        )
+        for item in results:
+            item.evidence = evidence_reads.get(item.question_id)
         if assignment is not None and assignment.status != AssignmentStatus.COMPLETED:
             assignment.status = AssignmentStatus.COMPLETED
             assignment.completed_at = now
@@ -697,6 +720,13 @@ class ExamService:
         if not is_own and not self._can_review_attempts(org, role):
             raise ForbiddenError("No puedes ver las respuestas de otro miembro.")
         answers = attempt.answers or {}
+        document = await self.documents.get_by_id(exam.document_id) if exam.document_id else None
+        evidence_reads = await self.evidence.reads_for_attempt(
+            organization_id=organization_id,
+            attempt_id=attempt.id,
+            question_ids=[question.id for question in exam.questions],
+            document=document,
+        )
         results: list[QuestionResult] = []
         for question in sorted(exam.questions, key=lambda item: item.position):
             raw = answers.get(str(question.id))
@@ -717,6 +747,7 @@ class ExamService:
                     correct_indices=expected,
                     explanation=explanation,
                     is_correct=selected == expected,
+                    evidence=evidence_reads.get(question.id),
                 )
             )
         people = await self.repo.users_by_ids({attempt.user_id})

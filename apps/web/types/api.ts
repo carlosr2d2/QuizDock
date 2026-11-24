@@ -120,6 +120,22 @@ export type ExamDetail = Exam & {
   assigned_group_ids?: string[];
 };
 
+export type Evidence = {
+  quote: string;
+  document_id?: string | null;
+  document_title?: string | null;
+  page_start?: number | null;
+  page_end?: number | null;
+  chapter?: string | null;
+  section?: string | null;
+  confidence?: number;
+  relevance?: number | null;
+  model?: string | null;
+  generated_at?: string | null;
+  verified?: boolean;
+  source?: string | null;
+};
+
 export type QuestionResult = {
   question_id: string;
   prompt: string;
@@ -131,6 +147,7 @@ export type QuestionResult = {
   correct_indices?: number[];
   explanation: string | null;
   is_correct: boolean;
+  evidence?: Evidence | null;
 };
 
 export type Attempt = AttemptSummary & {

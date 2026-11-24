@@ -60,6 +60,25 @@ class FakeAuditService:
         return AuditEventList(items=[], total=0, limit=limit, offset=offset)
 
 
+class FakeEvidenceService:
+    """No-op evidence for ExamService unit tests without a real DB."""
+
+    def __init__(self) -> None:
+        self.created = 0
+        self.snapshots = 0
+
+    async def create_from_generation(self, **kwargs):
+        self.created += 1
+        return None
+
+    async def snapshot_attempt(self, **kwargs):
+        self.snapshots += 1
+        return {}
+
+    async def reads_for_attempt(self, **kwargs):
+        return {}
+
+
 class FakeAuditRepo:
     def __init__(self) -> None:
         self.items: list = []

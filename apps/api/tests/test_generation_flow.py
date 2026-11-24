@@ -15,6 +15,7 @@ from app.services.permissions import can_author_content, require_author
 from app.services.rag import RetrievedContext
 from tests.fakes import (
     FakeDocumentRepo,
+    FakeEvidenceService,
     FakeExamRepo,
     FakeGroupRepo,
     FakeMembershipRepo,
@@ -53,6 +54,7 @@ def _exam_service(org, *, document=None, exam=None) -> ExamService:
     service.billing.orgs = service.orgs
     service.billing.txs = FakeTxRepo()
     service.audit = FakeAuditService()
+    service.evidence = FakeEvidenceService()
     return service
 
 

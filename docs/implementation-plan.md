@@ -35,24 +35,24 @@ Tareas:
 
 ---
 
-## Incremento 2 — Citation + Evidence persistence (Fase 3a)
+## Incremento 2 — Citation + Evidence persistence (Fase 3a) ✅
 
-1. `CitationEngine` (verify substring + scores).  
-2. Tablas `question_evidence`, `answer_references`.  
-3. En generación: crear evidence.  
-4. En submit attempt: snapshot AnswerReference.  
-5. Extender schemas `QuestionResult.evidence`.  
-6. Tests.
+1. [x] `CitationEngine` (verify substring + scores).  
+2. [x] Tablas `question_evidence`, `answer_references` (`0021`).  
+3. [x] En generación: crear evidence.  
+4. [x] En submit attempt: snapshot AnswerReference.  
+5. [x] Extender schemas `QuestionResult.evidence`.  
+6. [x] Tests (`test_citations`, `test_evidence`).
 
-**DoD:** API attempt incluye evidence JSON.
+**DoD:** API attempt incluye evidence JSON (nullable si no hay evidencia).
 
 ---
 
-## Incremento 3 — Evidence UI (Fase 3b)
+## Incremento 3 — Evidence UI (Fase 3b) ✅
 
-1. `EvidencePanel` en resultado de examen.  
-2. i18n keys.  
-3. Estados vacíos / página N/D.  
+1. [x] `EvidencePanel` en resultado de examen.  
+2. [x] i18n keys ES/EN.  
+3. [x] Estados vacíos / página N/D.  
 
 **DoD:** UX revisable en desktop/mobile.
 

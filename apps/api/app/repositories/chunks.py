@@ -72,3 +72,18 @@ class ChunkRepository:
             .order_by(DocumentChunk.position)
         )
         return list(result.scalars().all())
+
+    async def get_by_position(
+        self,
+        document_id: UUID,
+        organization_id: UUID,
+        position: int,
+    ) -> DocumentChunk | None:
+        result = await self.session.execute(
+            select(DocumentChunk).where(
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.organization_id == organization_id,
+                DocumentChunk.position == position,
+            )
+        )
+        return result.scalar_one_or_none()
