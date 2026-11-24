@@ -2,12 +2,15 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
+from app.services.page_map import PageSpan, build_page_spans
+
 
 @dataclass(frozen=True)
 class ExtractedDocument:
     text: str
     page_count: int
     metadata_title: str | None = None
+    pages: tuple[PageSpan, ...] = ()
 
 
 def extract_document(path: Path, content_type: str) -> ExtractedDocument:
@@ -18,7 +21,10 @@ def extract_document(path: Path, content_type: str) -> ExtractedDocument:
     if is_pdf:
         return _extract_pdf(data)
     text = _decode_text(data).strip()
-    return ExtractedDocument(text=text, page_count=1 if text else 0)
+    if not text:
+        return ExtractedDocument(text="", page_count=0)
+    joined, spans = build_page_spans([text])
+    return ExtractedDocument(text=joined, page_count=1, pages=tuple(spans))
 
 
 def pdf_metadata_title(path: Path) -> str | None:
@@ -32,12 +38,13 @@ def _extract_pdf(data: bytes) -> ExtractedDocument:
     from pypdf import PdfReader
 
     reader = PdfReader(BytesIO(data))
-    pages = [page.extract_text() or "" for page in reader.pages]
-    text = "\n\n".join(part.strip() for part in pages if part.strip())
+    raw_pages = [page.extract_text() or "" for page in reader.pages]
+    text, spans = build_page_spans(raw_pages)
     return ExtractedDocument(
-        text=text.strip(),
+        text=text,
         page_count=len(reader.pages),
         metadata_title=_pdf_title(reader),
+        pages=tuple(spans),
     )
 
 

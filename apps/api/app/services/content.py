@@ -186,7 +186,7 @@ class DocumentService:
                 if not document.display_title:
                     document.display_title = humanize_filename(document.filename)
             await self.session.commit()
-            await RagService(self.session).ensure_indexed(document)
+            await RagService(self.session).index_document(document, pages=extracted.pages)
             document.status = DocumentStatus.READY
             document.error_message = None
         except Exception as exc:

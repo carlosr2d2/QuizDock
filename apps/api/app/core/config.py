@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     rag_chunk_size: int = 1200
     rag_chunk_overlap: int = 200
     rag_candidate_k: int = 24
+    rag_semantic_enabled: bool = True
+    rag_semantic_mix_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
 
     llm_api_key: str = ""
     llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"

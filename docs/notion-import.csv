@@ -1,0 +1,58 @@
+type,id,name,description,priority,status,epic,story_points,sprint,dependencies,owner,severity,module,phase,target_date
+epic,E1,Sistema de Evidencia Documental,Materializar y mostrar evidencia documental (fragmento pagina capitulo confianza) que justifica respuestas,P0,Ready,, , ,Fase 2 RAG,Tech Lead,, ,Fase 3,2026-Q1
+epic,E2,Chat con Documentos,Agente grounded con citas obligatorias y refusals sobre el documento origen,P0,Ready,, , ,Fase 2 RAG,AI Engineer,, ,Fase 4,2026-Q1
+epic,E3,Apelaciones Academicas,Flujo formal de disputa de calificaciones con estados y resolucion humana,P0,Ready,, , ,E1,Backend Lead,, ,Fase 5,2026-Q2
+epic,E4,Comunicacion Profesor-Alumno,Hilos comentarios adjuntos y notificaciones ligados a apelaciones,P1,Ready,, , ,E3,Fullstack,, ,Fase 6,2026-Q2
+epic,E5,Asistente IA para Profesores,Recomendacion no vinculante con confianza y evidencia comparada,P1,Ready,, , ,E3 E1,AI Engineer,, ,Fase 7,2026-Q2
+epic,E6,Auditoria y Explainability,AiDecisionEvent completo export y vistas de auditoria,P0,Ready,, , ,E1,Backend Lead,, ,Fase 8,2026-Q3
+story,US-E1-01,Ver evidencia en resultado,Como estudiante quiero ver fragmento y referencia tras el intento,P0,Backlog,E1,5,Sprint 3,US-E1-03,Frontend,, ,
+story,US-E1-02,Panel unificado respuesta,Mi respuesta vs correcta vs IA vs evidencia en un bloque,P0,Backlog,E1,3,Sprint 3,US-E1-01,Frontend,, ,
+story,US-E1-03,Persistir QuestionEvidence,Materializar evidencia en generacion con quote verificado,P0,Backlog,E1,8,Sprint 2,US-RAG-01,Backend,, ,
+story,US-E1-04,Snapshot AnswerReference,Snapshot inmutable al submit attempt,P0,Backlog,E1,5,Sprint 2,US-E1-03,Backend,, ,
+story,US-E1-05,Pagina no disponible honesta,No inventar numeros de pagina,P0,Backlog,E1,2,Sprint 3,US-E1-01,Frontend,, ,
+story,US-E1-06,Evidencia visible al profesor,Profesor ve evidence al revisar intento,P1,Backlog,E1,3,Sprint 3,US-E1-04,Frontend,, ,
+story,US-E2-01,Chat con citas,Preguntar al documento y recibir citas,P0,Backlog,E2,8,Sprint 4,US-RAG-01,AI Engineer,, ,
+story,US-E2-02,Chat por que falle,Chat contextual a intento/pregunta,P0,Backlog,E2,5,Sprint 4,US-E2-01,AI Engineer,, ,
+story,US-E2-03,Refusal sin evidencia,Informar cuando el documento no responde,P0,Backlog,E2,3,Sprint 4,US-E2-01,AI Engineer,, ,
+story,US-E2-04,Historial conversacion,Persistir y listar mensajes,P1,Backlog,E2,3,Sprint 4,US-E2-01,Backend,, ,
+story,US-E2-05,Limites creditos chat,Consumo de creditos o rate limit,P1,Backlog,E2,5,Sprint 5,US-E2-01,Backend,, ,
+story,US-E3-01,Crear apelacion,CTA No estoy de acuerdo crea caso pending,P0,Backlog,E3,5,Sprint 5,US-E1-01,Backend,, ,
+story,US-E3-02,Adjuntar fragmento impugnacion,Highlighter de chunk como AppealEvidence,P0,Backlog,E3,8,Sprint 5,US-E3-01,Fullstack,, ,
+story,US-E3-03,Seguimiento apelaciones estudiante,Lista y detalle de estados,P0,Backlog,E3,3,Sprint 5,US-E3-01,Frontend,, ,
+story,US-E3-04,Bandeja profesor,Inbox filtrable por estado,P0,Backlog,E3,5,Sprint 5,US-E3-01,Frontend,, ,
+story,US-E3-05,Resolver apelacion,State machine y resolucion,P0,Backlog,E3,8,Sprint 6,US-E3-04,Backend,, ,
+story,US-E3-06,Notificar nueva apelacion,Email/evento al reviewer,P1,Backlog,E3,3,Sprint 6,US-E3-01,Backend,, ,
+story,US-E4-01,Comentarios en hilo,Comentar en apelacion,P0,Backlog,E4,5,Sprint 6,US-E3-05,Backend,, ,
+story,US-E4-02,Adjuntos en comentarios,Upload de archivos,P1,Backlog,E4,5,Sprint 7,US-E4-01,Backend,, ,
+story,US-E4-03,Notificar nuevo comentario,Mail async,P1,Backlog,E4,3,Sprint 7,US-E4-01,Backend,, ,
+story,US-E5-01,Recomendacion IA,Sugerencia no vinculante con confianza,P0,Backlog,E5,8,Sprint 7,US-E3-05,AI Engineer,, ,
+story,US-E5-02,Evidencia comparada UI,Sistema vs estudiante lado a lado,P0,Backlog,E5,5,Sprint 7,US-E5-01,Frontend,, ,
+story,US-E5-03,Detectar ambiguedad,Rationale de multiples lecturas,P1,Backlog,E5,5,Sprint 8,US-E5-01,AI Engineer,, ,
+story,US-E6-01,Listar AiDecisionEvent,Filtros por org feature fecha,P0,Backlog,E6,8,Sprint 8,US-E1-03,Backend,, ,
+story,US-E6-02,Export audit trail,Export JSON de apelacion/intento,P1,Backlog,E6,5,Sprint 8,US-E6-01,Backend,, ,
+story,US-E6-03,Registrar en todos los paths,generation chat appeal_review,P0,Backlog,E6,5,Sprint 8,US-E6-01,Backend,, ,
+story,US-RAG-01,Semantic retrieve,Cablear similar + embed_query,P0,Backlog,E1,5,Sprint 1,,Backend,, ,
+story,US-RAG-02,Metadata pagina capitulo,Enriquecer chunks en process,P0,Backlog,E1,8,Sprint 1,,Backend,, ,
+story,US-RAG-03,Rerank candidatos,Interfaz Reranker v0,P1,Backlog,E2,5,Sprint 2,US-RAG-01,AI Engineer,, ,
+task,T-RAG-01,Migracion metadata chunks,Alembic add page_start page_end chapter section embedding_model,Backend,Backlog,P0,Sprint 1,US-RAG-02,Backend,, ,
+task,T-RAG-02,Page map en PDF process,Extraer offsets de pagina best-effort,Backend,Backlog,P0,Sprint 1,US-RAG-02,Backend,, ,
+task,T-RAG-03,Implement semantic_retrieve,RagService method + tests,Backend,Backlog,P0,Sprint 1,US-RAG-01,Backend,, ,
+task,T-EV-01,CitationEngine verify quote,Substring normalize + scores,Backend,Backlog,P0,Sprint 2,US-E1-03,AI Engineer,, ,
+task,T-EV-02,Models QuestionEvidence AnswerReference,SQLAlchemy + Alembic,Backend,Backlog,P0,Sprint 2,US-E1-03,Backend,, ,
+task,T-EV-03,EvidencePanel UI,Componente en exams result,Frontend,Backlog,P0,Sprint 3,US-E1-01,Frontend,, ,
+task,T-CHAT-01,Models conversation message,Alembic + repos,Backend,Backlog,P0,Sprint 4,US-E2-01,Backend,, ,
+task,T-CHAT-02,DocumentChatService grounded,Fail-closed + citations,Backend,Backlog,P0,Sprint 4,US-E2-01,AI Engineer,, ,
+task,T-APP-01,Appeal state machine,Servicio + tests transiciones,Backend,Backlog,P0,Sprint 5,US-E3-05,Backend,, ,
+task,T-APP-02,Teacher appeals inbox UI,Bandeja team/appeals,Frontend,Backlog,P0,Sprint 5,US-E3-04,Frontend,, ,
+task,T-AI-01,AppealAiService Celery job,Recomendacion async,Backend,Backlog,P0,Sprint 7,US-E5-01,AI Engineer,, ,
+task,T-AUD-01,AiDecisionEvent model,Tabla + service write helpers,Backend,Backlog,P0,Sprint 8,US-E6-01,Backend,, ,
+bug,BUG-TPL-01,Plantilla bug evidencia,Usar para defectos de citation coverage,P2,Open,, , ,, ,Medium,Evidence,
+roadmap,PH1,Fase 1 Assessment,Assessment funcional tecnico Notion backlog,P0,Done,, , ,,PM,, ,Fase 1,2026-11-24
+roadmap,PH2,Fase 2 Infra RAG,Metadata semantic retrieve rerank reindex,P0,Ready,, , ,PH1,Tech Lead,, ,Fase 2,2026-Q1
+roadmap,PH3,Fase 3 Evidencias,QuestionEvidence API UI,P0,Ready,, , ,PH2,Tech Lead,, ,Fase 3,2026-Q1
+roadmap,PH4,Fase 4 Chat Documento,Agent grounded + UI,P0,Ready,, , ,PH2,AI Engineer,, ,Fase 4,2026-Q1
+roadmap,PH5,Fase 5 Apelaciones,Cases estados bandeja impugnacion,P0,Ready,, , ,PH3,Backend,, ,Fase 5,2026-Q2
+roadmap,PH6,Fase 6 Mensajeria,Hilos adjuntos notificaciones,P1,Ready,, , ,PH5,Fullstack,, ,Fase 6,2026-Q2
+roadmap,PH7,Fase 7 Asistente IA Profesor,Recomendaciones no vinculantes,P1,Ready,, , ,PH5 PH6,AI Engineer,, ,Fase 7,2026-Q2
+roadmap,PH8,Fase 8 Auditoria,AiDecisionEvent export dashboards,P0,Ready,, , ,PH3,Backend,, ,Fase 8,2026-Q3
+roadmap,PH9,Fase 9 Hardening,Perf costos abuse SLO QA,P1,Ready,, , ,PH2-PH8,Tech Lead,, ,Fase 9,2026-Q3
