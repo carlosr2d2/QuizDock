@@ -127,6 +127,14 @@ class DocumentChatService:
         if not content:
             raise DomainError("El mensaje no puede estar vacío.", 400)
 
+        from app.services.rate_limit import check_rate_limit
+
+        check_rate_limit(
+            f"chat:{organization_id}:{user_id}",
+            limit=settings.rate_limit_chat_per_minute,
+            window_seconds=60,
+        )
+
         await self.billing.debit(
             organization_id,
             user_id,

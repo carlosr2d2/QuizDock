@@ -73,6 +73,14 @@ class AppealAiService:
         if case.status == AppealStatus.CLOSED:
             raise ConflictError("La apelación está cerrada.")
 
+        from app.services.rate_limit import check_rate_limit
+
+        check_rate_limit(
+            f"appeal_ai:{organization_id}:{user_id}",
+            limit=settings.rate_limit_appeal_ai_per_hour,
+            window_seconds=3600,
+        )
+
         latest = await self.repo.latest_ai_recommendation(case.id, organization_id)
         if latest is not None and latest.status in {AppealAiStatus.QUEUED, AppealAiStatus.RUNNING}:
             return _ai_read(latest)

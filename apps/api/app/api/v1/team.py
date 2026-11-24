@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import RequestContext, get_context, get_current_user, get_db, require_roles
 from app.models import MembershipRole, User
+from app.schemas.ai_audit import AiAuditPurgeResult, AiDecisionEventList
 from app.schemas.audit import AuditEventList
 from app.schemas.auth import OrganizationRead
 from app.schemas.content import MemberProgressRead, TeamAnalyticsRead
@@ -20,6 +21,7 @@ from app.schemas.team import (
     OrganizationCreate,
     TeamSnapshot,
 )
+from app.services.ai_audit import AiAuditService
 from app.services.audit import AuditService
 from app.services.generation import ExamService
 from app.services.team import TeamService
@@ -143,6 +145,34 @@ async def team_audit(
 ) -> AuditEventList:
     return await AuditService(db).list_events(
         ctx.organization_id, ctx.role, limit=limit, offset=offset
+    )
+
+
+@router.get("/organizations/current/audit/ai", response_model=AiDecisionEventList)
+async def team_ai_audit(
+    ctx: RequestContext = Depends(get_context),
+    db: AsyncSession = Depends(get_db),
+    feature: str | None = Query(default=None),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> AiDecisionEventList:
+    return await AiAuditService(db).list_events(
+        ctx.organization_id,
+        ctx.role,
+        feature=feature,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post("/organizations/current/audit/ai/purge", response_model=AiAuditPurgeResult)
+async def purge_ai_audit(
+    ctx: RequestContext = Depends(require_roles(*MANAGE_ROLES)),
+    db: AsyncSession = Depends(get_db),
+    retention_days: int | None = Query(default=None, ge=1, le=3650),
+) -> AiAuditPurgeResult:
+    return await AiAuditService(db).purge(
+        ctx.organization_id, ctx.role, retention_days=retention_days
     )
 
 

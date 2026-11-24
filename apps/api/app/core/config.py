@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     credit_cost_per_flashcard: int = 1
     credit_cost_per_chat_message: int = 1
     credit_cost_per_appeal_review: int = 1
+    ai_audit_retention_days: int = 90
+    ai_decision_payload_max_bytes: int = 8000
+    rate_limit_chat_per_minute: int = 20
+    rate_limit_appeal_ai_per_hour: int = 30
     generation_max_chars: int = 24000
     rag_chunk_size: int = 1200
     rag_chunk_overlap: int = 200

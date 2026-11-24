@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
 import { PageLoader } from "@/components/ui/loader";
-import { apiFetch } from "@/lib/api";
+import { apiDownload, apiFetch } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/provider";
 import { formatDateTime } from "@/lib/utils";
 import type { AppealDetail, DocumentChunkPreview } from "@/types/api";
@@ -74,6 +74,18 @@ export default function AppealDetailPage() {
     }
   }
 
+  const exportJson = useMutation({
+    mutationFn: async () => {
+      const blob = await apiDownload(`/api/v1/appeals/${appealId}/export`);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `appeal-${appealId}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    },
+  });
+
   if (detail.isLoading) {
     return <PageLoader label={t("appeals.loadingDetail")} />;
   }
@@ -100,8 +112,18 @@ export default function AppealDetailPage() {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold tracking-tight">{item.exam_title}</h1>
           <Badge>{t(`appeals.status.${item.status}`)}</Badge>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            loading={exportJson.isPending}
+            onClick={() => exportJson.mutate()}
+          >
+            {exportJson.isPending ? t("appeals.exporting") : t("appeals.exportJson")}
+          </Button>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{formatDateTime(item.created_at, locale)}</p>
+        {exportJson.error ? <p className="mt-2 text-sm text-destructive">{exportJson.error.message}</p> : null}
       </div>
 
       <section className="space-y-2 rounded-xl border border-border bg-card p-5">

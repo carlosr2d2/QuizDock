@@ -23,10 +23,12 @@ from app.schemas.content import (
     GenerationJobRead,
     ProgressRead,
 )
+from app.services.ai_audit import AiAuditService
 from app.services.content import FlashcardService
 from app.services.generation import ExamService, FlashcardGenerationService
 from app.services.progress import merge_personal_progress
 from app.services.permissions import AUTHOR_DENIED, AUTHOR_ROLES
+from fastapi.responses import JSONResponse
 
 WRITE_ROLES = (MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.MEMBER)
 ASSIGN_ROLES = (MembershipRole.OWNER, MembershipRole.ADMIN)
@@ -112,6 +114,24 @@ async def get_attempt(
 ) -> AttemptRead:
     return await ExamService(db).get_attempt(
         exam_id, attempt_id, ctx.organization_id, ctx.user.id, ctx.role
+    )
+
+
+@exams_router.get("/{exam_id}/attempts/{attempt_id}/export")
+async def export_attempt(
+    exam_id: UUID,
+    attempt_id: UUID,
+    ctx: RequestContext = Depends(get_context),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    payload = await AiAuditService(db).export_attempt(
+        ctx.organization_id, ctx.user.id, ctx.role, exam_id, attempt_id
+    )
+    return JSONResponse(
+        content=payload,
+        headers={
+            "Content-Disposition": f'attachment; filename="attempt-{attempt_id}.json"',
+        },
     )
 
 

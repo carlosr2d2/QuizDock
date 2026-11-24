@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
 import { PageLoader } from "@/components/ui/loader";
-import { apiFetch } from "@/lib/api";
+import { apiDownload, apiFetch } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/provider";
 import { useTeamPage } from "@/lib/use-team-page";
 import { formatDateTime } from "@/lib/utils";
@@ -24,6 +24,8 @@ export default function TeamAppealDetailPage() {
   const appealId = params.id;
   const { me, snapshot, isPersonal } = useTeamPage();
   const canResolve = snapshot?.role === "owner" || snapshot?.role === "admin";
+  const canExport =
+    snapshot?.role === "owner" || snapshot?.role === "admin" || snapshot?.role === "auditor";
   const queryClient = useQueryClient();
   const [rationale, setRationale] = useState("");
 
@@ -59,6 +61,18 @@ export default function TeamAppealDetailPage() {
       setRationale("");
       await queryClient.invalidateQueries({ queryKey: ["appeals", appealId] });
       await queryClient.invalidateQueries({ queryKey: ["appeals", "inbox"] });
+    },
+  });
+
+  const exportJson = useMutation({
+    mutationFn: async () => {
+      const blob = await apiDownload(`/api/v1/appeals/${appealId}/export`);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `appeal-${appealId}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
     },
   });
 
@@ -101,11 +115,23 @@ export default function TeamAppealDetailPage() {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold tracking-tight">{item.exam_title}</h1>
           <Badge>{t(`appeals.status.${item.status}`)}</Badge>
+          {canExport ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              loading={exportJson.isPending}
+              onClick={() => exportJson.mutate()}
+            >
+              {exportJson.isPending ? t("appeals.exporting") : t("appeals.exportJson")}
+            </Button>
+          ) : null}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           {t("appeals.student")}: {item.student_name || item.student_email} ·{" "}
           {formatDateTime(item.created_at, locale)}
         </p>
+        {exportJson.error ? <p className="mt-2 text-sm text-destructive">{exportJson.error.message}</p> : null}
       </div>
 
       <section className="space-y-2 rounded-xl border border-border bg-card p-5">

@@ -44,3 +44,23 @@ def appeal_ai_review(recommendation_id: str) -> str:
 
     run_worker_job(_job)
     return recommendation_id
+
+
+@celery_app.task(name="audit.purge_ai_events")
+def purge_ai_events(organization_id: str | None = None, retention_days: int | None = None) -> int:
+    from datetime import datetime, timedelta, timezone
+
+    from app.core.config import get_settings
+    from app.repositories.ai_audit import AiAuditRepository
+
+    settings = get_settings()
+    days = retention_days if retention_days is not None else settings.ai_audit_retention_days
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, int(days)))
+    org = UUID(organization_id) if organization_id else None
+
+    async def _job(session: AsyncSession) -> int:
+        deleted = await AiAuditRepository(session).purge_before(cutoff, organization_id=org)
+        await session.commit()
+        return deleted
+
+    return run_worker_job(_job)

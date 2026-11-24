@@ -16,8 +16,10 @@ from app.schemas.appeals import (
     AppealResolveRequest,
     AppealStatusUpdate,
 )
+from app.services.ai_audit import AiAuditService
 from app.services.appeal_ai import AppealAiService
 from app.services.appeals import AppealService
+from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/appeals", tags=["appeals"])
 WRITE_ROLES = (MembershipRole.OWNER, MembershipRole.ADMIN, MembershipRole.MEMBER)
@@ -133,4 +135,21 @@ async def request_ai_review(
 ) -> AppealAiRecommendationRead:
     return await AppealAiService(db).request_review(
         ctx.organization_id, ctx.user.id, ctx.role, appeal_id
+    )
+
+
+@router.get("/{appeal_id}/export")
+async def export_appeal(
+    appeal_id: UUID,
+    ctx: RequestContext = Depends(get_context),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    payload = await AiAuditService(db).export_appeal(
+        ctx.organization_id, ctx.user.id, ctx.role, appeal_id
+    )
+    return JSONResponse(
+        content=payload,
+        headers={
+            "Content-Disposition": f'attachment; filename="appeal-{appeal_id}.json"',
+        },
     )

@@ -22,11 +22,13 @@ from app.models import (
     Question,
     QuestionKind,
 )
+from app.models.ai_audit import AiFeature
 from app.models.audit import AuditAction
 from app.models.exam import AssignmentStatus
 from app.repositories.content import DocumentRepository, ExamRepository, FlashcardRepository, JobRepository
 from app.repositories.groups import GroupRepository
 from app.repositories.identity import MembershipRepository, OrganizationRepository
+from app.services.ai_audit import AiAuditService
 from app.schemas.content import (
     AssignmentRead,
     AttemptRead,
@@ -160,6 +162,7 @@ class ExamService:
         self.orgs = OrganizationRepository(session)
         self.billing = BillingService(session)
         self.audit = AuditService(session)
+        self.ai_audit = AiAuditService(session)
         self.evidence = EvidenceService(session)
 
     async def list_reads(
@@ -612,6 +615,19 @@ class ExamService:
             exam.generated_count = saved
             exam.status = ExamStatus.READY
             exam.error_message = None
+            await self.ai_audit.record(
+                organization_id=exam.organization_id,
+                feature=AiFeature.GENERATION,
+                outcome="exam_ready",
+                actor_user_id=exam.owner_user_id,
+                document_id=exam.document_id,
+                model=settings.llm_model,
+                payload={
+                    "exam_id": str(exam.id),
+                    "question_count": saved,
+                    "kind": "exam",
+                },
+            )
             await self.session.commit()
         except Exception as exc:
             await self._fail_exam(exam, str(exc))
@@ -976,6 +992,7 @@ class FlashcardGenerationService:
         self.cards = FlashcardRepository(session)
         self.billing = BillingService(session)
         self.audit = AuditService(session)
+        self.ai_audit = AiAuditService(session)
 
     async def get_job(self, job_id: UUID, organization_id: UUID) -> GenerationJob:
         job = await self.jobs.get(job_id, organization_id)
@@ -1071,6 +1088,19 @@ class FlashcardGenerationService:
             job.status = "succeeded"
             job.item_count = len(cards)
             job.error_message = None
+            await self.ai_audit.record(
+                organization_id=job.organization_id,
+                feature=AiFeature.GENERATION,
+                outcome="flashcards_ready",
+                actor_user_id=job.user_id,
+                document_id=job.document_id,
+                model=settings.llm_model,
+                payload={
+                    "job_id": str(job.id),
+                    "item_count": len(cards),
+                    "kind": "flashcards",
+                },
+            )
             await self.session.commit()
         except Exception as exc:
             await self._fail_job(job, str(exc))

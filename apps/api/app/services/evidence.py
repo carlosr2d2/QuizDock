@@ -6,12 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.files import display_name
+from app.models.ai_audit import AiFeature
 from app.models.document import Document
 from app.models.evidence import AnswerReference, EvidenceSource, QuestionEvidence
 from app.models.exam import Exam, ExamAttempt, Question
 from app.repositories.chunks import ChunkRepository
 from app.repositories.evidence import EvidenceRepository
 from app.schemas.content import EvidenceRead
+from app.services.ai_audit import AiAuditService
 from app.services.citations import CitationEngine
 
 settings = get_settings()
@@ -23,6 +25,7 @@ class EvidenceService:
         self.repo = EvidenceRepository(session)
         self.chunks = ChunkRepository(session)
         self.citations = CitationEngine()
+        self.ai_audit = AiAuditService(session)
 
     async def create_from_generation(
         self,
@@ -71,7 +74,24 @@ class EvidenceService:
             source=EvidenceSource.GENERATION,
             verified=citation.verified,
         )
-        return await self.repo.add_evidence(row)
+        saved = await self.repo.add_evidence(row)
+        await self.ai_audit.record(
+            organization_id=organization_id,
+            feature=AiFeature.EVIDENCE,
+            outcome="verified" if citation.verified else "unverified",
+            document_id=document_id,
+            model=model or settings.llm_model,
+            chunk_ids=[citation.chunk_id] if citation.chunk_id else [],
+            confidence=citation.confidence,
+            relevance=citation.relevance,
+            payload={
+                "question_id": str(question.id),
+                "evidence_id": str(saved.id),
+                "page_start": citation.page_start,
+                "page_end": citation.page_end,
+            },
+        )
+        return saved
 
     async def snapshot_attempt(
         self,

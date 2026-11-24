@@ -526,6 +526,34 @@ export type AuditEventList = {
   offset: number;
 };
 
+export type AiFeature = "generation" | "evidence" | "chat" | "appeal_review" | string;
+
+export type AiDecisionEvent = {
+  id: string;
+  organization_id: string;
+  actor_user_id?: string | null;
+  actor_email?: string | null;
+  actor_full_name?: string | null;
+  feature: AiFeature;
+  document_id?: string | null;
+  conversation_id?: string | null;
+  model: string;
+  prompt_hash?: string | null;
+  chunk_ids: string[];
+  confidence?: number | null;
+  relevance?: number | null;
+  outcome: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AiDecisionEventList = {
+  items: AiDecisionEvent[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export type AppealStatus =
   | "pending"
   | "in_review"
