@@ -588,8 +588,27 @@ export type Appeal = {
   student_email: string;
 };
 
+export type AppealComment = {
+  id: string;
+  appeal_id: string;
+  author_user_id: string;
+  body: string;
+  attachment_keys: string[];
+  created_at: string;
+  author_name: string;
+  author_email: string;
+};
+
+export type AppealAttachment = {
+  storage_key: string;
+  filename: string;
+  content_type: string;
+  size: number;
+};
+
 export type AppealDetail = Appeal & {
   evidence: AppealEvidence[];
+  comments: AppealComment[];
   resolution?: AppealResolution | null;
   actions: AppealAction[];
 };

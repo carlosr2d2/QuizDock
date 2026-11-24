@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
-from uuid import UUID
+import re
+from pathlib import Path
+from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +11,7 @@ from app.core.config import get_settings
 from app.models.appeal import (
     AppealActionLog,
     AppealCase,
+    AppealComment,
     AppealDecision,
     AppealEvidence,
     AppealEvidenceSource,
@@ -24,6 +27,9 @@ from app.repositories.evidence import EvidenceRepository
 from app.repositories.identity import MembershipRepository, OrganizationRepository, UserRepository
 from app.schemas.appeals import (
     AppealActionRead,
+    AppealAttachmentRead,
+    AppealCommentCreate,
+    AppealCommentRead,
     AppealCreate,
     AppealDetail,
     AppealEvidenceCreate,
@@ -43,6 +49,14 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 REVIEWER_ROLES = {MembershipRole.OWNER, MembershipRole.ADMIN}
+ALLOWED_ATTACHMENT_TYPES = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "text/plain",
+}
+MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 class AppealService:
@@ -172,14 +186,113 @@ class AppealService:
             raise NotFoundError("Appeal not found")
         self._assert_can_view(case, user_id, role)
         evidence = await self.repo.list_evidence(case.id, organization_id)
+        comments = await self.repo.list_comments(case.id, organization_id)
         resolution = await self.repo.get_resolution(case.id, organization_id)
         actions = await self.repo.list_actions(case.id, organization_id)
         student = await self.users.get_by_id(case.student_user_id)
+        authors = await self.exams.users_by_ids({row.author_user_id for row in comments})
         return AppealDetail(
             **_read(case, student).model_dump(),
             evidence=[AppealEvidenceRead.model_validate(item) for item in evidence],
+            comments=[_comment_read(item, authors.get(item.author_user_id)) for item in comments],
             resolution=AppealResolutionRead.model_validate(resolution) if resolution else None,
             actions=[AppealActionRead.model_validate(item) for item in actions],
+        )
+
+    async def add_comment(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+        role: MembershipRole,
+        appeal_id: UUID,
+        payload: AppealCommentCreate,
+    ) -> AppealDetail:
+        if role == MembershipRole.AUDITOR:
+            raise ForbiddenError("Los auditores no pueden comentar.")
+        case = await self.repo.get(appeal_id, organization_id)
+        if case is None:
+            raise NotFoundError("Appeal not found")
+        self._assert_can_view(case, user_id, role)
+        if case.student_user_id != user_id and role not in REVIEWER_ROLES:
+            raise ForbiddenError("No puedes comentar en esta apelación.")
+        if case.status == AppealStatus.CLOSED:
+            raise ConflictError("La apelación está cerrada.")
+
+        body = payload.body.strip()
+        if len(body) < 1:
+            raise DomainError("El comentario no puede estar vacío.", 400)
+
+        keys = list(payload.attachment_keys or [])
+        if len(keys) > 3:
+            raise DomainError("Máximo 3 adjuntos por comentario.", 400)
+        for key in keys:
+            self._assert_owned_attachment(organization_id, appeal_id, key)
+
+        row = AppealComment(
+            organization_id=organization_id,
+            appeal_id=case.id,
+            author_user_id=user_id,
+            body=body,
+            attachment_keys=keys,
+        )
+        await self.repo.add_comment(row)
+        await self._log(
+            case,
+            user_id,
+            "commented",
+            {"preview": body[:240], "attachments": len(keys)},
+        )
+        if case.status == AppealStatus.PENDING and role in REVIEWER_ROLES:
+            assert_transition(case.status, AppealStatus.IN_REVIEW)
+            case.status = AppealStatus.IN_REVIEW
+            await self._log(case, user_id, "status_changed", {"status": case.status.value})
+        if case.status == AppealStatus.NEEDS_INFO and case.student_user_id == user_id:
+            assert_transition(case.status, AppealStatus.IN_REVIEW)
+            case.status = AppealStatus.IN_REVIEW
+            await self._log(case, user_id, "status_changed", {"status": case.status.value})
+
+        await self.session.commit()
+        await self._notify_comment(case, organization_id, user_id, body)
+        return await self.get_detail(organization_id, user_id, role, case.id)
+
+    async def store_attachment(
+        self,
+        organization_id: UUID,
+        user_id: UUID,
+        role: MembershipRole,
+        appeal_id: UUID,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+    ) -> AppealAttachmentRead:
+        if role == MembershipRole.AUDITOR:
+            raise ForbiddenError("Los auditores no pueden adjuntar archivos.")
+        case = await self.repo.get(appeal_id, organization_id)
+        if case is None:
+            raise NotFoundError("Appeal not found")
+        self._assert_can_view(case, user_id, role)
+        if case.student_user_id != user_id and role not in REVIEWER_ROLES:
+            raise ForbiddenError("No puedes adjuntar archivos a esta apelación.")
+        if case.status == AppealStatus.CLOSED:
+            raise ConflictError("La apelación está cerrada.")
+        if content_type not in ALLOWED_ATTACHMENT_TYPES:
+            raise DomainError("Tipo de archivo no permitido. Usa PDF, PNG, JPG o TXT.", 400)
+        if len(data) == 0:
+            raise DomainError("El archivo está vacío.", 400)
+        if len(data) > MAX_ATTACHMENT_BYTES:
+            raise DomainError("El archivo supera el máximo de 5 MB.", 400)
+
+        safe_name = SAFE_FILENAME.sub("_", Path(filename).name)[:120] or "attachment"
+        storage_key = f"{organization_id}/appeals/{appeal_id}/{uuid4()}-{safe_name}"
+        dest = Path(settings.storage_dir) / storage_key
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+        return AppealAttachmentRead(
+            storage_key=storage_key,
+            filename=safe_name,
+            content_type=content_type,
+            size=len(data),
         )
 
     async def add_evidence(
@@ -365,39 +478,127 @@ class AppealService:
             )
         )
 
+    def _assert_owned_attachment(self, organization_id: UUID, appeal_id: UUID, storage_key: str) -> None:
+        prefix = f"{organization_id}/appeals/{appeal_id}/"
+        if not storage_key.startswith(prefix) or ".." in storage_key:
+            raise DomainError("Adjunto inválido para esta apelación.", 400)
+        path = Path(settings.storage_dir) / storage_key
+        if not path.is_file():
+            raise NotFoundError("Adjunto no encontrado")
+
     async def _notify_reviewers(self, case: AppealCase, organization_id: UUID) -> None:
         try:
-            memberships = await self.memberships.list_with_users(organization_id)
             org = await self.orgs.get(organization_id)
             org_name = org.name if org else "QuizDock"
             url = f"{settings.app_public_url.rstrip('/')}/team/appeals/{case.id}"
-            for membership in memberships:
-                if membership.role not in REVIEWER_ROLES:
-                    continue
-                user = membership.user
-                if user is None or user.id == case.student_user_id:
-                    continue
-                message = OutboundEmail(
-                    to=user.email,
-                    subject=f"Nueva apelación en {org_name}",
+            await self._send_to_reviewers(
+                organization_id,
+                exclude_user_id=case.student_user_id,
+                subject=f"Nueva apelación en {org_name}",
+                text=(
+                    f"Hay una nueva apelación sobre «{case.exam_title}».\n\n"
+                    f"Pregunta: {case.question_prompt[:200]}\n"
+                    f"Argumento: {case.student_argument[:300]}\n\n"
+                    f"Revisar: {url}\n"
+                ),
+                html=(
+                    f"<p>Hay una nueva apelación sobre <strong>{_escape(case.exam_title)}</strong>.</p>"
+                    f"<p>{_escape(case.question_prompt[:200])}</p>"
+                    f"<p><a href=\"{url}\">Revisar apelación</a></p>"
+                ),
+            )
+        except Exception:
+            logger.exception("Failed to notify appeal reviewers")
+
+    async def _notify_comment(
+        self,
+        case: AppealCase,
+        organization_id: UUID,
+        author_user_id: UUID,
+        body: str,
+    ) -> None:
+        try:
+            org = await self.orgs.get(organization_id)
+            org_name = org.name if org else "QuizDock"
+            preview = body[:300]
+            if author_user_id == case.student_user_id:
+                url = f"{settings.app_public_url.rstrip('/')}/team/appeals/{case.id}"
+                await self._send_to_reviewers(
+                    organization_id,
+                    exclude_user_id=author_user_id,
+                    subject=f"Nuevo comentario en apelación · {org_name}",
                     text=(
-                        f"Hay una nueva apelación sobre «{case.exam_title}».\n\n"
-                        f"Pregunta: {case.question_prompt[:200]}\n"
-                        f"Argumento: {case.student_argument[:300]}\n\n"
-                        f"Revisar: {url}\n"
+                        f"Hay un nuevo comentario sobre «{case.exam_title}».\n\n"
+                        f"{preview}\n\n"
+                        f"Abrir: {url}\n"
                     ),
                     html=(
-                        f"<p>Hay una nueva apelación sobre <strong>{_escape(case.exam_title)}</strong>.</p>"
-                        f"<p>{_escape(case.question_prompt[:200])}</p>"
-                        f"<p><a href=\"{url}\">Revisar apelación</a></p>"
+                        f"<p>Nuevo comentario en <strong>{_escape(case.exam_title)}</strong>.</p>"
+                        f"<p>{_escape(preview)}</p>"
+                        f"<p><a href=\"{url}\">Abrir hilo</a></p>"
+                    ),
+                )
+            else:
+                student = await self.users.get_by_id(case.student_user_id)
+                if student is None:
+                    return
+                url = f"{settings.app_public_url.rstrip('/')}/appeals/{case.id}"
+                message = OutboundEmail(
+                    to=student.email,
+                    subject=f"Respuesta en tu apelación · {org_name}",
+                    text=(
+                        f"Hay un nuevo comentario sobre «{case.exam_title}».\n\n"
+                        f"{preview}\n\n"
+                        f"Abrir: {url}\n"
+                    ),
+                    html=(
+                        f"<p>Nuevo comentario en tu apelación "
+                        f"<strong>{_escape(case.exam_title)}</strong>.</p>"
+                        f"<p>{_escape(preview)}</p>"
+                        f"<p><a href=\"{url}\">Abrir hilo</a></p>"
                     ),
                 )
                 try:
                     self.mailer.send(message)
                 except Exception:
-                    logger.exception("Failed to notify reviewer %s", user.email)
+                    logger.exception("Failed to notify student %s", student.email)
         except Exception:
-            logger.exception("Failed to notify appeal reviewers")
+            logger.exception("Failed to notify appeal comment recipients")
+
+    async def _send_to_reviewers(
+        self,
+        organization_id: UUID,
+        *,
+        exclude_user_id: UUID | None,
+        subject: str,
+        text: str,
+        html: str,
+    ) -> None:
+        memberships = await self.memberships.list_with_users(organization_id)
+        for membership in memberships:
+            if membership.role not in REVIEWER_ROLES:
+                continue
+            user = membership.user
+            if user is None or (exclude_user_id is not None and user.id == exclude_user_id):
+                continue
+            message = OutboundEmail(to=user.email, subject=subject, text=text, html=html)
+            try:
+                self.mailer.send(message)
+            except Exception:
+                logger.exception("Failed to notify reviewer %s", user.email)
+
+
+def _comment_read(row: AppealComment, author) -> AppealCommentRead:
+    return AppealCommentRead(
+        id=row.id,
+        appeal_id=row.appeal_id,
+        author_user_id=row.author_user_id,
+        body=row.body,
+        attachment_keys=list(row.attachment_keys or []),
+        created_at=row.created_at,
+        author_name=author.full_name if author else "",
+        author_email=author.email if author else "",
+    )
 
 
 def _read(case: AppealCase, student) -> AppealRead:

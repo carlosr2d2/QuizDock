@@ -42,6 +42,7 @@ TABLES = [
     "groups",
     "exam_assignments",
     "appeal_action_logs",
+    "appeal_comments",
     "appeal_resolutions",
     "appeal_evidence",
     "appeal_cases",

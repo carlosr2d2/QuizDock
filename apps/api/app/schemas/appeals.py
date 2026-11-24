@@ -36,6 +36,29 @@ class AppealResolveRequest(BaseModel):
     rationale: str = Field(min_length=1, max_length=4000)
 
 
+class AppealCommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+    attachment_keys: list[str] = Field(default_factory=list, max_length=3)
+
+
+class AppealAttachmentRead(BaseModel):
+    storage_key: str
+    filename: str
+    content_type: str
+    size: int
+
+
+class AppealCommentRead(ORMModel):
+    id: UUID
+    appeal_id: UUID
+    author_user_id: UUID
+    body: str
+    attachment_keys: list[str] = Field(default_factory=list)
+    created_at: datetime
+    author_name: str = ""
+    author_email: str = ""
+
+
 class AppealEvidenceRead(ORMModel):
     id: UUID
     appeal_id: UUID
@@ -92,6 +115,7 @@ class AppealRead(ORMModel):
 
 class AppealDetail(AppealRead):
     evidence: list[AppealEvidenceRead] = Field(default_factory=list)
+    comments: list[AppealCommentRead] = Field(default_factory=list)
     resolution: AppealResolutionRead | None = None
     actions: list[AppealActionRead] = Field(default_factory=list)
 

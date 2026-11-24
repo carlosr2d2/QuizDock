@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
+import { AppealThread } from "@/components/appeal-thread";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
@@ -176,6 +177,8 @@ export default function AppealDetailPage() {
           <p className="text-sm text-foreground">{item.resolution.rationale}</p>
         </section>
       ) : null}
+
+      <AppealThread appealId={appealId} detail={item} canComment={item.status !== "closed"} />
 
       <section className="space-y-2 rounded-xl border border-border bg-card p-5">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("appeals.history")}</p>

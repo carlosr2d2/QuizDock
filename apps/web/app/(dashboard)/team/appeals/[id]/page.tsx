@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
+import { AppealThread } from "@/components/appeal-thread";
 import { PersonalWorkspaceHint } from "@/components/team/personal-workspace-hint";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -198,7 +199,15 @@ export default function TeamAppealDetailPage() {
         </section>
       ) : null}
 
-      {!canResolve ? <p className="text-sm text-muted-foreground">{t("appeals.forbidden")}</p> : null}
+      {!canResolve && snapshot?.role !== "auditor" ? (
+        <p className="text-sm text-muted-foreground">{t("appeals.forbidden")}</p>
+      ) : null}
+
+      <AppealThread
+        appealId={appealId}
+        detail={item}
+        canComment={canResolve && item.status !== "closed"}
+      />
 
       <section className="space-y-2 rounded-xl border border-border bg-card p-5">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("appeals.history")}</p>

@@ -144,3 +144,22 @@ class AppealActionLog(UUIDPrimaryKeyMixin, Base):
     action: Mapped[str] = mapped_column(String(64))
     payload: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AppealComment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "appeal_comments"
+
+    organization_id: Mapped[UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        index=True,
+    )
+    appeal_id: Mapped[UUID] = mapped_column(
+        ForeignKey("appeal_cases.id", ondelete="CASCADE"),
+        index=True,
+    )
+    author_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+    )
+    body: Mapped[str] = mapped_column(Text, default="")
+    attachment_keys: Mapped[list] = mapped_column(JSONB, default=list)

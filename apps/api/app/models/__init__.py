@@ -2,6 +2,7 @@ from app.models.ai_audit import AiDecisionEvent, AiFeature
 from app.models.appeal import (
     AppealActionLog,
     AppealCase,
+    AppealComment,
     AppealDecision,
     AppealEvidence,
     AppealEvidenceSource,
@@ -43,6 +44,7 @@ __all__ = [
     "AiFeature",
     "AppealActionLog",
     "AppealCase",
+    "AppealComment",
     "AppealDecision",
     "AppealEvidence",
     "AppealEvidenceSource",

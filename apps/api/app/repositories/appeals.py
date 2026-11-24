@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.appeal import (
     AppealActionLog,
     AppealCase,
+    AppealComment,
     AppealEvidence,
     AppealResolution,
     AppealStatus,
@@ -122,5 +123,21 @@ class AppealRepository:
                 AppealActionLog.organization_id == organization_id,
             )
             .order_by(AppealActionLog.created_at.asc())
+        )
+        return list(result.scalars().all())
+
+    async def add_comment(self, row: AppealComment) -> AppealComment:
+        self.session.add(row)
+        await self.session.flush()
+        return row
+
+    async def list_comments(self, appeal_id: UUID, organization_id: UUID) -> list[AppealComment]:
+        result = await self.session.execute(
+            select(AppealComment)
+            .where(
+                AppealComment.appeal_id == appeal_id,
+                AppealComment.organization_id == organization_id,
+            )
+            .order_by(AppealComment.created_at.asc())
         )
         return list(result.scalars().all())

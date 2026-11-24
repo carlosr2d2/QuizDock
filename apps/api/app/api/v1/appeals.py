@@ -1,11 +1,13 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import RequestContext, get_context, get_db, require_roles
 from app.models import MembershipRole
 from app.schemas.appeals import (
+    AppealAttachmentRead,
+    AppealCommentCreate,
     AppealCreate,
     AppealDetail,
     AppealEvidenceCreate,
@@ -63,6 +65,37 @@ async def add_appeal_evidence(
 ) -> AppealDetail:
     return await AppealService(db).add_evidence(
         ctx.organization_id, ctx.user.id, ctx.role, appeal_id, payload
+    )
+
+
+@router.post("/{appeal_id}/comments", response_model=AppealDetail, status_code=201)
+async def add_appeal_comment(
+    appeal_id: UUID,
+    payload: AppealCommentCreate,
+    ctx: RequestContext = Depends(require_roles(*WRITE_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> AppealDetail:
+    return await AppealService(db).add_comment(
+        ctx.organization_id, ctx.user.id, ctx.role, appeal_id, payload
+    )
+
+
+@router.post("/{appeal_id}/attachments", response_model=AppealAttachmentRead, status_code=201)
+async def upload_appeal_attachment(
+    appeal_id: UUID,
+    file: UploadFile = File(...),
+    ctx: RequestContext = Depends(require_roles(*WRITE_ROLES)),
+    db: AsyncSession = Depends(get_db),
+) -> AppealAttachmentRead:
+    data = await file.read()
+    return await AppealService(db).store_attachment(
+        ctx.organization_id,
+        ctx.user.id,
+        ctx.role,
+        appeal_id,
+        filename=file.filename or "attachment",
+        content_type=file.content_type or "application/octet-stream",
+        data=data,
     )
 
 

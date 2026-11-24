@@ -6,6 +6,7 @@ import pytest
 from app.models.appeal import (
     AppealActionLog,
     AppealCase,
+    AppealComment,
     AppealDecision,
     AppealEvidence,
     AppealResolution,
@@ -14,7 +15,13 @@ from app.models.appeal import (
 from app.models.chunk import DocumentChunk
 from app.models.exam import ExamAttempt, ExamStatus, QuestionKind
 from app.models.identity import MembershipRole
-from app.schemas.appeals import AppealCreate, AppealEvidenceCreate, AppealResolveRequest, AppealStatusUpdate
+from app.schemas.appeals import (
+    AppealCommentCreate,
+    AppealCreate,
+    AppealEvidenceCreate,
+    AppealResolveRequest,
+    AppealStatusUpdate,
+)
 from app.services.appeals import AppealService
 from app.services.errors import ConflictError, DomainError, ForbiddenError, NotFoundError
 from tests.fakes import (
@@ -40,6 +47,7 @@ class FakeAppealRepo:
         self.evidence: list[AppealEvidence] = []
         self.resolutions: list[AppealResolution] = []
         self.actions: list[AppealActionLog] = []
+        self.comments: list[AppealComment] = []
 
     async def add(self, row: AppealCase) -> AppealCase:
         ensure_id(row)
@@ -131,6 +139,22 @@ class FakeAppealRepo:
             if row.appeal_id == appeal_id and row.organization_id == organization_id
         ]
 
+    async def add_comment(self, row: AppealComment) -> AppealComment:
+        ensure_id(row)
+        if getattr(row, "created_at", None) is None:
+            row.created_at = datetime.now(timezone.utc)
+        if getattr(row, "updated_at", None) is None:
+            row.updated_at = row.created_at
+        self.comments.append(row)
+        return row
+
+    async def list_comments(self, appeal_id, organization_id):
+        return [
+            row
+            for row in self.comments
+            if row.appeal_id == appeal_id and row.organization_id == organization_id
+        ]
+
 
 class FakeEvidenceRepo:
     def __init__(self) -> None:
@@ -206,6 +230,7 @@ def _setup():
     service.exams.exams.append(exam)
     service.exams.attempts.append(attempt)
     service.exams.people[student.id] = student
+    service.exams.people[admin.id] = admin
     service.documents = FakeDocumentRepo()
     service.documents.by_id[document.id] = document
     service.evidence_repo = FakeEvidenceRepo()
@@ -347,3 +372,69 @@ async def test_list_document_chunks_requires_org_document():
     assert rows[0].id == chunk.id
     with pytest.raises(NotFoundError):
         await service.list_document_chunks(org.id, uuid4())
+
+
+@pytest.mark.asyncio
+async def test_comment_thread_notifies_counterpart_and_logs():
+    service, org, student, admin, _exam, question, attempt, _chunk = _setup()
+    created = await service.create(
+        org.id,
+        student.id,
+        MembershipRole.MEMBER,
+        AppealCreate(
+            attempt_id=attempt.id,
+            question_id=question.id,
+            argument="Quiero discutir la clave con el revisor.",
+            evidence_quote="Fragmento suficiente para abrir el caso de apelación.",
+        ),
+    )
+    service.mailer.sent.clear()
+    reviewed = await service.add_comment(
+        org.id,
+        admin.id,
+        MembershipRole.ADMIN,
+        created.id,
+        AppealCommentCreate(body="Revisa la página 3 del documento, por favor."),
+    )
+    assert reviewed.status == AppealStatus.IN_REVIEW.value
+    assert len(reviewed.comments) == 1
+    assert reviewed.comments[0].author_name == "Admin"
+    assert any(item.action == "commented" for item in reviewed.actions)
+    assert len(service.mailer.sent) == 1
+    assert student.email == service.mailer.sent[0].to
+
+    service.mailer.sent.clear()
+    replied = await service.add_comment(
+        org.id,
+        student.id,
+        MembershipRole.MEMBER,
+        created.id,
+        AppealCommentCreate(body="Listo, miré la página 3 y mantengo mi posición."),
+    )
+    assert len(replied.comments) == 2
+    assert len(service.mailer.sent) == 1
+    assert service.mailer.sent[0].to == admin.email
+
+
+@pytest.mark.asyncio
+async def test_auditor_cannot_comment():
+    service, org, student, _admin, _exam, question, attempt, _chunk = _setup()
+    created = await service.create(
+        org.id,
+        student.id,
+        MembershipRole.MEMBER,
+        AppealCreate(
+            attempt_id=attempt.id,
+            question_id=question.id,
+            argument="Caso abierto para probar rol auditor.",
+            evidence_quote="Evidencia mínima válida para crear la apelación.",
+        ),
+    )
+    with pytest.raises(ForbiddenError):
+        await service.add_comment(
+            org.id,
+            uuid4(),
+            MembershipRole.AUDITOR,
+            created.id,
+            AppealCommentCreate(body="Solo observo."),
+        )
