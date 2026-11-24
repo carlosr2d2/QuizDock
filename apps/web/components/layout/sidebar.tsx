@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Layers,
   LogOut,
+  Scale,
   Users,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -68,6 +69,7 @@ export function Sidebar() {
         ...(canViewAudit ? [{ href: "/team/analytics", label: t("nav.analytics") }] : []),
         ...(canManage ? [{ href: "/team/groups", label: t("nav.groups") }] : []),
         ...(canManage ? [{ href: "/team/invite", label: t("nav.invite") }] : []),
+        ...(canViewAudit ? [{ href: "/team/appeals", label: t("nav.appeals") }] : []),
         ...(canViewAudit ? [{ href: "/team/audit", label: t("nav.audit") }] : []),
       ];
 
@@ -76,6 +78,7 @@ export function Sidebar() {
     ...(showAuthoring ? [{ href: "/documents", label: t("nav.documents"), icon: FileText }] : []),
     { href: "/exams", label: t("nav.exams"), icon: BookOpen },
     ...(showAuthoring ? [{ href: "/flashcards", label: t("nav.flashcards"), icon: Layers }] : []),
+    { href: "/appeals", label: t("nav.appeals"), icon: Scale },
     ...(isPersonal
       ? [{ href: "/team/new", label: t("nav.createTeam"), icon: Building2 }]
       : [

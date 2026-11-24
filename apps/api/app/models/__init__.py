@@ -1,4 +1,13 @@
 from app.models.ai_audit import AiDecisionEvent, AiFeature
+from app.models.appeal import (
+    AppealActionLog,
+    AppealCase,
+    AppealDecision,
+    AppealEvidence,
+    AppealEvidenceSource,
+    AppealResolution,
+    AppealStatus,
+)
 from app.models.audit import AuditAction, AuditEvent
 from app.models.billing import CreditTransaction, PaymentOrder, PaymentStatus
 from app.models.chat import ChatRole, DocumentChatMessage, DocumentConversation
@@ -32,6 +41,13 @@ from app.models.support import ErrorReport
 __all__ = [
     "AiDecisionEvent",
     "AiFeature",
+    "AppealActionLog",
+    "AppealCase",
+    "AppealDecision",
+    "AppealEvidence",
+    "AppealEvidenceSource",
+    "AppealResolution",
+    "AppealStatus",
     "AnswerReference",
     "AuditAction",
     "AuditEvent",

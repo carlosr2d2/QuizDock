@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.v1.appeals import router as appeals_router
 from app.api.v1.assessments import exams_router, flashcards_router, jobs_router, progress_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.billing import router as billing_router
@@ -18,4 +19,5 @@ api_router.include_router(exams_router)
 api_router.include_router(flashcards_router)
 api_router.include_router(jobs_router)
 api_router.include_router(progress_router)
+api_router.include_router(appeals_router)
 api_router.include_router(support_router)

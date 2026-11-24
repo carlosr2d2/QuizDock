@@ -505,6 +505,23 @@ class FakeExamRepo:
         self.attempts.append(attempt)
         return attempt
 
+    async def get_attempt_in_org(
+        self,
+        attempt_id: UUID,
+        organization_id: UUID,
+        *,
+        user_id: UUID | None = None,
+    ):
+        for item in self.attempts:
+            if getattr(item, "id", None) != attempt_id:
+                continue
+            if getattr(item, "organization_id", None) != organization_id:
+                continue
+            if user_id is not None and getattr(item, "user_id", None) != user_id:
+                continue
+            return item
+        return None
+
     async def progress_aggregates(
         self, organization_id: UUID, user_id: UUID
     ) -> tuple[int, int, float | None, float | None]:

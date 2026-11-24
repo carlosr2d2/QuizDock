@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 
+import { AppealCta } from "@/components/appeal-cta";
 import { DocumentCover } from "@/components/document-cover";
 import { AttemptHistoryCard, AttemptRow } from "@/components/attempt-row";
 import { EvidencePanel } from "@/components/evidence-panel";
@@ -18,6 +19,7 @@ import { apiDownload, apiFetch } from "@/lib/api";
 import { useI18n, useT } from "@/lib/i18n/provider";
 import { cn, formatDateTime, formatScore } from "@/lib/utils";
 import type {
+  Appeal,
   Attempt,
   AttemptSummary,
   ExamAssignment,
@@ -80,6 +82,22 @@ function ExamPlayer() {
       setTaking(false);
     },
   });
+
+  const myAppeals = useQuery({
+    queryKey: ["appeals", "mine"],
+    queryFn: () => apiFetch<Appeal[]>("/api/v1/appeals"),
+    enabled: Boolean(result?.is_own),
+  });
+
+  const appealsByQuestion = useMemo(() => {
+    const map = new Map<string, Appeal>();
+    for (const item of myAppeals.data ?? []) {
+      if (result && item.attempt_id === result.id) {
+        map.set(item.question_id, item);
+      }
+    }
+    return map;
+  }, [myAppeals.data, result]);
 
   const latestAttemptId = exam.data?.attempts?.[0]?.id;
   const targetAttemptId = taking
@@ -286,6 +304,14 @@ function ExamPlayer() {
                 explanation={item.explanation}
                 locale={locale}
               />
+              {result.is_own && !item.is_correct ? (
+                <AppealCta
+                  attemptId={result.id}
+                  questionId={item.question_id}
+                  documentId={data.document_id}
+                  existing={appealsByQuestion.get(item.question_id) ?? null}
+                />
+              ) : null}
             </li>
           ))}
         </ol>

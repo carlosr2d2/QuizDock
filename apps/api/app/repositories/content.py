@@ -171,6 +171,22 @@ class ExamRepository:
         result = await self.session.execute(select(ExamAttempt).where(*conditions))
         return result.scalar_one_or_none()
 
+    async def get_attempt_in_org(
+        self,
+        attempt_id: UUID,
+        organization_id: UUID,
+        *,
+        user_id: UUID | None = None,
+    ) -> ExamAttempt | None:
+        conditions = [
+            ExamAttempt.id == attempt_id,
+            ExamAttempt.organization_id == organization_id,
+        ]
+        if user_id is not None:
+            conditions.append(ExamAttempt.user_id == user_id)
+        result = await self.session.execute(select(ExamAttempt).where(*conditions))
+        return result.scalar_one_or_none()
+
     async def stats_for_exams(
         self,
         exam_ids: set[UUID],

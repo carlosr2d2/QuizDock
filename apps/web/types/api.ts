@@ -525,3 +525,81 @@ export type AuditEventList = {
   limit: number;
   offset: number;
 };
+
+export type AppealStatus =
+  | "pending"
+  | "in_review"
+  | "needs_info"
+  | "accepted"
+  | "rejected"
+  | "closed";
+
+export type AppealEvidence = {
+  id: string;
+  appeal_id: string;
+  submitted_by_user_id: string;
+  chunk_id?: string | null;
+  quote: string;
+  page_start?: number | null;
+  page_end?: number | null;
+  chapter?: string | null;
+  section?: string | null;
+  argument?: string | null;
+  source: "student" | "system" | "teacher" | string;
+  created_at: string;
+};
+
+export type AppealResolution = {
+  id: string;
+  appeal_id: string;
+  resolver_user_id: string;
+  decision: "accepted" | "rejected" | "needs_info" | string;
+  rationale: string;
+  score_adjustment?: number | null;
+  resolved_at: string;
+};
+
+export type AppealAction = {
+  id: string;
+  appeal_id: string;
+  actor_user_id?: string | null;
+  action: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type Appeal = {
+  id: string;
+  organization_id: string;
+  attempt_id: string;
+  question_id: string;
+  exam_id: string;
+  student_user_id: string;
+  status: AppealStatus;
+  student_argument: string;
+  selected_indices: number[];
+  correct_indices: number[];
+  system_evidence_snapshot: Record<string, unknown>;
+  question_prompt: string;
+  exam_title: string;
+  created_at: string;
+  updated_at: string;
+  student_name: string;
+  student_email: string;
+};
+
+export type AppealDetail = Appeal & {
+  evidence: AppealEvidence[];
+  resolution?: AppealResolution | null;
+  actions: AppealAction[];
+};
+
+export type DocumentChunkPreview = {
+  id: string;
+  position: number;
+  content: string;
+  page_start?: number | null;
+  page_end?: number | null;
+  chapter?: string | null;
+  section?: string | null;
+};

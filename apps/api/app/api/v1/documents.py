@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import RequestContext, get_context, get_db, require_roles
 from app.models import MembershipRole
+from app.schemas.appeals import DocumentChunkRead
 from app.schemas.chat import (
     ChatMessageCreate,
     ChatMessageRead,
@@ -14,6 +15,7 @@ from app.schemas.chat import (
     ChatSessionRead,
 )
 from app.schemas.content import DocumentCreate, DocumentRead
+from app.services.appeals import AppealService
 from app.services.content import DocumentService
 from app.services.document_chat import DocumentChatService
 from app.services.permissions import AUTHOR_DENIED, AUTHOR_ROLES
@@ -86,6 +88,18 @@ async def delete_document(
 ) -> Response:
     await DocumentService(db).delete(document_id, ctx.organization_id, ctx.role, actor_id=ctx.user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{document_id}/chunks", response_model=list[DocumentChunkRead])
+async def list_document_chunks(
+    document_id: UUID,
+    limit: int = 40,
+    ctx: RequestContext = Depends(get_context),
+    db: AsyncSession = Depends(get_db),
+) -> list[DocumentChunkRead]:
+    return await AppealService(db).list_document_chunks(
+        ctx.organization_id, document_id, limit=limit
+    )
 
 
 @router.get("/{document_id}/chat/sessions", response_model=list[ChatSessionRead])
