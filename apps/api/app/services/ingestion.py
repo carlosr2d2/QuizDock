@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
+from app.services.exam_quality import normalize_extracted_text
 from app.services.page_map import PageSpan, build_page_spans
 
 
@@ -20,7 +21,7 @@ def extract_document(path: Path, content_type: str) -> ExtractedDocument:
     is_pdf = content_type == "application/pdf" or suffix == ".pdf"
     if is_pdf:
         return _extract_pdf(data)
-    text = _decode_text(data).strip()
+    text = normalize_extracted_text(_decode_text(data))
     if not text:
         return ExtractedDocument(text="", page_count=0)
     joined, spans = build_page_spans([text])
@@ -38,7 +39,7 @@ def _extract_pdf(data: bytes) -> ExtractedDocument:
     from pypdf import PdfReader
 
     reader = PdfReader(BytesIO(data))
-    raw_pages = [page.extract_text() or "" for page in reader.pages]
+    raw_pages = [normalize_extracted_text(page.extract_text() or "") for page in reader.pages]
     text, spans = build_page_spans(raw_pages)
     return ExtractedDocument(
         text=text,

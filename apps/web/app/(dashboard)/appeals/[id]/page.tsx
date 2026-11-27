@@ -68,7 +68,7 @@ export default function AppealDetailPage() {
   function selectChunk(nextId: string, chunk: DocumentChunkPreview | null) {
     setChunkId(nextId);
     if (chunk) {
-      setQuote(chunk.content.slice(0, 900));
+      setQuote(chunk.content.slice(0, 2000));
     } else if (!nextId) {
       setQuote("");
     }

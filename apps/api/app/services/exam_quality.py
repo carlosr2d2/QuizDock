@@ -7,7 +7,47 @@ import unicodedata
 
 from typing import Any
 
+# PDF syllable breaks: "gene- rativas", soft hyphen U+00AD.
 _HYPHEN_BREAK = re.compile(r"(?<=\w)-\s+(?=\w)")
+_SOFT_HYPHEN = re.compile("\u00ad")
+_HYPHEN_LINE_BREAK = re.compile(r"(?<=\w)\s*-\s*\n\s*(?=\w)")
+# Spaced stump + short continuation: "técni - cas" (avoid "IA - definición").
+_SPACED_SYLLABLE = re.compile(
+    r"([A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{4,})\s+-\s+([a-záéíóúüñ]{1,5})\b"
+)
+_DASH_KEEP = frozenset(
+    {
+        "de",
+        "del",
+        "la",
+        "el",
+        "en",
+        "y",
+        "o",
+        "a",
+        "al",
+        "un",
+        "una",
+        "the",
+        "or",
+        "and",
+        "to",
+        "of",
+        "for",
+        "ser",
+        "si",
+        "no",
+        "es",
+        "se",
+        "su",
+        "ya",
+        "muy",
+        "con",
+        "por",
+        "que",
+        "como",
+    }
+)
 _JOIN_MORPHEME = re.compile(
     r"(?<=[A-Za-zÁÉÍÓÚáéíóúñ])\s+(?=ficar\b|ficial\b|ción\b|sión\b|mente\b)",
     re.IGNORECASE,
@@ -119,9 +159,41 @@ def polish_exam_text(text: str) -> str:
     if not text:
         return text
     normalized = unicodedata.normalize("NFKC", text)
+    normalized = _SOFT_HYPHEN.sub("", normalized)
+    normalized = _HYPHEN_LINE_BREAK.sub("", normalized)
     normalized = _HYPHEN_BREAK.sub("", normalized)
+    normalized = _join_spaced_syllables(normalized)
     normalized = _JOIN_MORPHEME.sub("", normalized)
     return re.sub(r"[ \t]+", " ", normalized).strip()
+
+
+def normalize_extracted_text(text: str) -> str:
+    """Clean PDF/plain extraction while preserving paragraph breaks for chunking."""
+    if not text:
+        return text
+    normalized = unicodedata.normalize("NFKC", text).replace("\r\n", "\n").replace("\r", "\n")
+    normalized = _SOFT_HYPHEN.sub("", normalized)
+    normalized = _HYPHEN_LINE_BREAK.sub("", normalized)
+    normalized = _HYPHEN_BREAK.sub("", normalized)
+    normalized = _join_spaced_syllables(normalized)
+    normalized = _JOIN_MORPHEME.sub("", normalized)
+    paragraphs = []
+    for block in re.split(r"\n\s*\n+", normalized):
+        line = re.sub(r"[ \t]*\n[ \t]*", " ", block)
+        line = re.sub(r"[ \t]+", " ", line).strip()
+        if line:
+            paragraphs.append(line)
+    return "\n\n".join(paragraphs)
+
+
+def _join_spaced_syllables(text: str) -> str:
+    def replacer(match: re.Match[str]) -> str:
+        left, right = match.group(1), match.group(2)
+        if right.lower() in _DASH_KEEP:
+            return match.group(0)
+        return f"{left}{right}"
+
+    return _SPACED_SYLLABLE.sub(replacer, text)
 
 
 def usable_concept(concept: str) -> bool:

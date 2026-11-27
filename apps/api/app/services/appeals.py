@@ -422,7 +422,7 @@ class AppealService:
             DocumentChunkRead(
                 id=row.id,
                 position=row.position,
-                content=row.content[:900],
+                content=row.content,
                 page_start=row.page_start,
                 page_end=row.page_end,
                 chapter=row.chapter,

@@ -258,6 +258,8 @@ def test_polish_joins_pdf_hyphen_breaks():
     assert polish_exam_text("IAs gene- rativas y escru- tinio público") == (
         "IAs generativas y escrutinio público"
     )
+    assert polish_exam_text("las bases técni - cas estaban") == "las bases técnicas estaban"
+    assert polish_exam_text("IA - definición clásica").startswith("IA -")
     assert "artificial" in polish_exam_text("inteligencia arti\ufb01cial")
     assert polish_exam_text("a identi ficar") == "a identificar"
 

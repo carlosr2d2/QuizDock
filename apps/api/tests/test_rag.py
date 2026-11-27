@@ -5,7 +5,7 @@ import pytest
 
 from app.models.chunk import DocumentChunk
 from app.services.embeddings import hashed_embedding
-from app.services.rag import RagService, RetrievedContext, _stratified_sample
+from app.services.rag import RagService, RetrievedContext, _relevance, _stratified_sample
 
 
 class FakeChunkRepo:
@@ -168,3 +168,19 @@ def test_stratified_sample_respects_count():
     picked = _stratified_sample(rows, 5, random.Random(1))
     assert len(picked) == 5
     assert len({row.position for row in picked}) == 5
+
+
+def test_relevance_accepts_numpy_like_embedding():
+    class AmbiguousArray(list):
+        def __bool__(self) -> bool:
+            raise ValueError(
+                "The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()"
+            )
+
+    query = hashed_embedding("fotosíntesis")
+    embedding = AmbiguousArray(hashed_embedding("fotosíntesis clorofila"))
+    score = _relevance(query, embedding)
+    assert score is not None
+    assert 0.0 <= score <= 1.0
+    assert _relevance(query, None) is None
+    assert _relevance(query, AmbiguousArray()) is None

@@ -36,7 +36,10 @@ export function ChunkPicker({ chunks, value, onChange, loading = false, classNam
     });
   }, [chunks, query]);
 
-  const selected = chunks.find((item) => item.id === value) ?? null;
+  const selectedIndex = chunks.findIndex((item) => item.id === value);
+  const selected = selectedIndex >= 0 ? chunks[selectedIndex] : null;
+  const previous = selectedIndex > 0 ? chunks[selectedIndex - 1] : null;
+  const next = selectedIndex >= 0 && selectedIndex < chunks.length - 1 ? chunks[selectedIndex + 1] : null;
 
   if (loading) {
     return <p className="text-xs text-muted-foreground">{t("appeals.loadingChunks")}</p>;
@@ -63,7 +66,7 @@ export function ChunkPicker({ chunks, value, onChange, loading = false, classNam
       <div
         role="listbox"
         aria-label={t("appeals.pickChunk")}
-        className="max-h-64 space-y-2 overflow-y-auto rounded-md border border-border bg-background p-2"
+        className="max-h-72 space-y-2 overflow-y-auto rounded-md border border-border bg-background p-2"
       >
         {filtered.length ? (
           filtered.map((item) => {
@@ -85,7 +88,12 @@ export function ChunkPicker({ chunks, value, onChange, loading = false, classNam
                 <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   {formatChunkMeta(item, t)}
                 </p>
-                <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-sm leading-snug text-foreground">
+                <p
+                  className={cn(
+                    "mt-1 whitespace-pre-wrap text-sm leading-snug text-foreground",
+                    !active && "line-clamp-4",
+                  )}
+                >
                   {item.content}
                 </p>
               </button>
@@ -111,7 +119,23 @@ export function ChunkPicker({ chunks, value, onChange, loading = false, classNam
           <p className="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">
             {formatChunkMeta(selected, t)}
           </p>
-          <p className="mt-1 whitespace-pre-wrap text-sm leading-snug text-foreground">{selected.content}</p>
+          {previous ? (
+            <div className="mt-2 rounded border border-border/60 bg-background/70 px-2 py-1.5">
+              <p className="text-[11px] font-medium text-muted-foreground">{t("appeals.chunkPrevContext")}</p>
+              <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-xs leading-snug text-muted-foreground">
+                {previous.content}
+              </p>
+            </div>
+          ) : null}
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-snug text-foreground">{selected.content}</p>
+          {next ? (
+            <div className="mt-2 rounded border border-border/60 bg-background/70 px-2 py-1.5">
+              <p className="text-[11px] font-medium text-muted-foreground">{t("appeals.chunkNextContext")}</p>
+              <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-xs leading-snug text-muted-foreground">
+                {next.content}
+              </p>
+            </div>
+          ) : null}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">{t("appeals.pickChunkHint")}</p>

@@ -283,9 +283,16 @@ def _embedding_model_label() -> str:
 
 
 def _relevance(query: list[float], embedding: list[float] | None) -> float | None:
-    if not embedding:
+    # pgvector may return a NumPy array; never use truthiness (`if not embedding`).
+    if embedding is None:
         return None
-    score = cosine(query, list(embedding))
+    try:
+        values = [float(item) for item in embedding]
+    except (TypeError, ValueError):
+        return None
+    if len(values) == 0:
+        return None
+    score = cosine(query, values)
     return max(0.0, min(1.0, (score + 1.0) / 2.0))
 
 
